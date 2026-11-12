@@ -4,11 +4,13 @@ const types = ['water_level', 'electromagnetic_flow', 'rainfall'];
 const clean = (s) => typeof s === 'string' && s.trim() ? s.trim() : null;
 function devices(db) {
   const rows = db.prepare(`SELECT s.*, g.name AS gateway_name, g.transport, g.timeout_seconds,
-    (SELECT MAX(e.occurred_at) FROM device_events e WHERE e.gateway_id=g.id AND e.event_type IN ('heartbeat','telemetry_received')) AS last_contact
+    (SELECT MAX(e.occurred_at) FROM device_events e WHERE e.gateway_id=g.id AND e.event_type IN ('heartbeat','telemetry_received')) AS last_contact,
+    (SELECT e.event_type FROM device_events e WHERE e.gateway_id=g.id AND e.event_type IN ('heartbeat','telemetry_received','communication_error') ORDER BY e.occurred_at DESC, e.id DESC LIMIT 1) AS last_event
     FROM sensors s JOIN gateways g ON g.id=s.gateway_id ORDER BY s.id`).all();
   return rows.map((row) => {
     let status = 'pending';
-    if (row.last_contact) {
+    if (row.last_event === 'communication_error') status = 'communication_error';
+    else if (row.last_contact) {
       const elapsed = Date.now() - Date.parse(row.last_contact);
       status = row.timeout_seconds ? (elapsed > row.timeout_seconds * 1000 ? 'offline' : 'online') : 'timeout_unconfigured';
     }
@@ -51,10 +53,23 @@ export function buildApp(db) {
       return reply.code(201).send({ id });
     } catch (error) { return reply.code(409).send({ error: error.message }); }
   });
+  app.put('/api/devices/:id', async (req, reply) => {
+    const b = req.body || {}, existing = db.prepare('SELECT * FROM sensors WHERE id=?').get(req.params.id);
+    if (!existing) return reply.code(404).send({ error:'设备不存在' });
+    const name = clean(b.name);
+    if (!name || b.type !== existing.type) return reply.code(400).send({ error:'设备名称必填，已有设备类型不可修改' });
+    const timeout = b.timeout_seconds === '' || b.timeout_seconds == null ? null : Number(b.timeout_seconds);
+    if (timeout !== null && (!Number.isInteger(timeout) || timeout < 1)) return reply.code(400).send({ error:'超时必须是正整数秒' });
+    db.transaction(() => {
+      db.prepare('UPDATE sensors SET name=?, type=?, manufacturer=?, model=?, location=?, unit=?, notes=? WHERE id=?').run(name,b.type,clean(b.manufacturer),clean(b.model),clean(b.location),clean(b.unit),clean(b.notes),existing.id);
+      db.prepare('UPDATE gateways SET transport=?, timeout_seconds=? WHERE id=?').run(clean(b.transport),timeout,existing.gateway_id);
+    })();
+    return { id:existing.id };
+  });
   app.get('/api/dashboard/summary', async () => {
     const all = devices(db); const count = (status) => all.filter((d) => d.status === status).length;
     const last = db.prepare('SELECT MAX(received_at) AS value FROM telemetry_measurements').get().value;
-    return { total: all.length, online: count('online'), offline: count('offline'), pending: count('pending'), timeout_unconfigured: count('timeout_unconfigured'), online_rate: all.length ? count('online') / all.length : null, last_received_at: last };
+    return { total: all.length, online: count('online'), offline: count('offline'), pending: count('pending'), communication_error: count('communication_error'), timeout_unconfigured: count('timeout_unconfigured'), online_rate: all.length ? count('online') / all.length : null, last_received_at: last };
   });
   app.get('/api/telemetry/latest', async () => db.prepare(`SELECT m.*, s.name AS sensor_name, s.gateway_id, r.transport, r.device_timestamp FROM telemetry_measurements m JOIN sensors s ON s.id=m.sensor_id JOIN telemetry_raw r ON r.id=m.raw_id WHERE m.id IN (SELECT m2.id FROM telemetry_measurements m2 WHERE m2.sensor_id=m.sensor_id AND m2.measurement_code=m.measurement_code ORDER BY m2.received_at DESC, m2.id DESC LIMIT 1) ORDER BY m.received_at DESC`).all());
   app.get('/api/telemetry/history', async (req) => queryHistory(db, req.query));

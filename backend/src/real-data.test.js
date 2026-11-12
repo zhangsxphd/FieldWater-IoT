@@ -36,3 +36,29 @@ test('empty database, registration, raw retention, deduplication and history', a
     assert.equal((await get('/api/devices'))[0].status, 'online');
   } finally { await app.close(); db.close(); }
 });
+
+test('existing database migrates without deleting records and event states follow evidence', async () => {
+  const { mkdtempSync, rmSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const Database = (await import('better-sqlite3')).default;
+  const dir = mkdtempSync(join(tmpdir(), 'fieldwater-migration-test-')); const file = join(dir, 'test.sqlite');
+  const old = new Database(file);
+  old.exec("CREATE TABLE gateways (id TEXT PRIMARY KEY, name TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP); CREATE TABLE sensors (id TEXT PRIMARY KEY, gateway_id TEXT NOT NULL REFERENCES gateways(id), type TEXT NOT NULL, name TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP); INSERT INTO gateways(id,name) VALUES ('existing-gw','Existing'); INSERT INTO sensors(id,gateway_id,type,name) VALUES ('existing-sensor','existing-gw','water_level','Existing');"); old.close();
+  const db = openDatabase(file); const app = buildApp(db);
+  try {
+    assert.equal(db.prepare('SELECT count(*) n FROM sensors').get().n,1);
+    assert.equal(db.prepare('SELECT count(*) n FROM schema_migrations').get().n,2);
+    const getStatus = async () => (await app.inject('/api/devices')).json()[0].status;
+    assert.equal(await getStatus(),'pending');
+    db.prepare("UPDATE gateways SET timeout_seconds=60 WHERE id='existing-gw'").run();
+    db.prepare("INSERT INTO device_events (gateway_id,event_type,occurred_at) VALUES ('existing-gw','heartbeat',?)").run('2020-01-01T00:00:00.000Z');
+    assert.equal(await getStatus(),'offline');
+    db.prepare("INSERT INTO device_events (gateway_id,event_type,occurred_at) VALUES ('existing-gw','communication_error',?)").run(new Date().toISOString());
+    assert.equal(await getStatus(),'communication_error');
+    const update = await app.inject({method:'PUT',url:'/api/devices/existing-sensor',payload:{name:'Updated',type:'water_level',timeout_seconds:60}});
+    assert.equal(update.statusCode,200); assert.equal(db.prepare('SELECT name FROM sensors').get().name,'Updated');
+    const invalid = await app.inject({method:'PUT',url:'/api/devices/existing-sensor',payload:{name:'Updated',type:'rainfall'}});
+    assert.equal(invalid.statusCode,400);
+  } finally { await app.close(); db.close(); rmSync(dir,{recursive:true,force:true}); }
+});
