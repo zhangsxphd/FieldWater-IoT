@@ -24,7 +24,7 @@ test('empty database, registration, raw retention, deduplication and history', a
     const response = await app.inject({ method:'POST', url:'/api/devices', payload: { id:'test-sensor', name:'test', gateway_id:'test-gateway', type:'rainfall', timeout_seconds:60 } });
     assert.equal(response.statusCode, 201);
     assert.equal((await get('/api/devices'))[0].status, 'pending');
-    const input = { gatewayId:'test-gateway', sensorId:'test-sensor', messageId:'one', rawPayload:frame, transport:'test', source:'isolated-test', parse:(b) => parseRainGauge(b, { address:1, register:0, quantity:1 }) };
+    const input = { gatewayId:'test-gateway', sensorId:'test-sensor', messageId:'one', rawPayload:frame, transport:'test', source:'isolated-test', communicationVerified:true, parse:(b) => parseRainGauge(b, { address:1, register:0, quantity:1 }) };
     ingest(db, input);
     assert.equal(ingest(db, input).duplicate, true);
     ingest(db, { ...input, messageId:'bad', rawPayload:Buffer.from([1]), parse:() => { throw new Error('bad frame'); } });
@@ -61,4 +61,20 @@ test('existing database migrates without deleting records and event states follo
     const invalid = await app.inject({method:'PUT',url:'/api/devices/existing-sensor',payload:{name:'Updated',type:'rainfall'}});
     assert.equal(invalid.statusCode,400);
   } finally { await app.close(); db.close(); rmSync(dir,{recursive:true,force:true}); }
+});
+
+test('unverified input does not establish online state and zero values remain real values', async () => {
+  const db=openDatabase(':memory:'); const app=buildApp(db);
+  try {
+    db.prepare('INSERT INTO gateways(id,name,timeout_seconds) VALUES (?,?,?)').run('g','Gateway',30);
+    db.prepare('INSERT INTO sensors(id,gateway_id,type,name) VALUES (?,?,?,?)').run('s','g','rainfall','Sensor');
+    const input={gatewayId:'g',sensorId:'s',rawPayload:Buffer.from([0]),transport:'isolated',source:'isolated-test',parse:()=>({measurement_code:'rainfall',value:0,unit:'mm',quality_status:'test'})};
+    ingest(db,input);
+    assert.equal((await app.inject('/api/devices')).json()[0].status,'pending');
+    const rows=(await app.inject('/api/telemetry/history?limit=1')).json();
+    assert.equal(rows.rows[0].value,0);
+    const csv=await app.inject('/api/telemetry/history.csv');
+    assert.match(csv.body, /"0"/);
+    assert.deepEqual(db.prepare('SELECT raw_payload FROM telemetry_raw').get().raw_payload, Buffer.from([0]));
+  } finally { await app.close(); db.close(); }
 });

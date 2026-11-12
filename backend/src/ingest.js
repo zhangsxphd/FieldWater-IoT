@@ -1,5 +1,5 @@
 // Internal adapter interface. Not exposed to the network until transport and device format are verified.
-export function ingest(db, { gatewayId, sensorId = null, messageId = null, rawPayload, transport, source, deviceTimestamp = null, receivedAt = new Date().toISOString(), parse }) {
+export function ingest(db, { gatewayId, sensorId = null, messageId = null, rawPayload, transport, source, deviceTimestamp = null, receivedAt = new Date().toISOString(), communicationVerified = false, parse }) {
   if (!gatewayId || !transport || !source || !Buffer.isBuffer(rawPayload)) throw new Error('gateway, transport, source and raw bytes required');
   const insert = db.prepare(`INSERT INTO telemetry_raw (gateway_id,sensor_id,message_id,raw_payload,received_at,device_timestamp,transport,source,parse_status) VALUES (?,?,?,?,?,?,?,?,?)`);
   let rawId;
@@ -17,7 +17,7 @@ export function ingest(db, { gatewayId, sensorId = null, messageId = null, rawPa
   try {
     const sensor = db.prepare('SELECT * FROM sensors WHERE id = ? AND gateway_id = ?').get(sensorId, gatewayId);
     if (!sensor) throw new Error('unknown sensor or gateway binding');
-    db.prepare('INSERT INTO device_events (gateway_id,sensor_id,event_type,occurred_at) VALUES (?,?,?,?)').run(gatewayId, sensorId, 'telemetry_received', receivedAt);
+    if (communicationVerified === true) db.prepare('INSERT INTO device_events (gateway_id,sensor_id,event_type,occurred_at) VALUES (?,?,?,?)').run(gatewayId, sensorId, 'telemetry_received', receivedAt);
     if (typeof parse !== 'function') throw new Error('no verified parser configured');
     const measurement = parse(rawPayload);
     if (!measurement || !Number.isFinite(measurement.value) || !measurement.measurement_code || !measurement.unit || !measurement.quality_status) throw new Error('invalid parsed measurement');
