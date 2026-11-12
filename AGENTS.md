@@ -1,11 +1,11 @@
 # FieldWater IoT 开发约束
 
-项目为田水智联 FieldWater IoT，面向农田水量监测与灌溉试验。预期架构为独立 MQTT Broker、Node.js/Fastify 后端、独立 SQLite、React 前端和模拟设备；网关与传感器分开建模。当前后端可用 `npm ci --prefix backend` 安装、`npm start --prefix backend` 启动、`npm test --prefix backend` 测试；其余服务尚未实现。
+田水智联 FieldWater IoT 面向农田水量监测与灌溉试验。架构为独立 Node.js/Fastify 后端、SQLite、React 前端和可扩展的真实数据接入层；网关与传感器分开建模。仅使用实际仪器数据，遵守 `docs/REAL_DATA_POLICY.md`。
 
-项目目录按功能逐步建立：`backend/`、`frontend/`、`simulator/`、`infra/`、`docs/`。不要建立无用途的占位文件。
+目录按功能逐步建立：`backend/`、`frontend/`、`docs/`。后端使用 `npm ci --prefix backend` 安装、`npm start --prefix backend` 启动、`npm test --prefix backend` 测试。其余命令在实现后补充。
 
 每个独立功能或文档批次检查敏感信息、运行相关测试、执行 `git diff --check`、检查暂存区，使用英文 Conventional Commits 提交并立即推送；核对远端 SHA。不得强推、擅自重写历史或清理未知文件。保护规则存在时不得绕过。任务结束检查状态。
 
-遵循现有代码风格，明确区分模拟与实际数据，保留原始数据和错误，禁止编造仪器协议。测试覆盖实际行为，未执行的测试不能报告通过。不得提交 `.env`、凭据、密钥和数据库文件。开发服务仅供本机使用，生产接入需独立安全设计。
+保留原始报文、来源与解析错误，禁止编造仪器协议或监测数据。测试数据只可进入隔离测试数据库。测试覆盖实际行为，未执行的测试不能报告通过。不得提交 `.env`、凭据、密钥和数据库文件。开发服务仅供本机使用，生产接入需独立安全设计。
 
 禁止修改 LanSense 源码、数据库、配置或服务；不复制其 `.git`、真实环境变量和凭据。本阶段不部署云端、不操作真实 DTU 或仪器。
