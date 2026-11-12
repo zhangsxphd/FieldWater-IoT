@@ -1,6 +1,6 @@
 # FieldWater IoT 开发约束
 
-项目为田水智联 FieldWater IoT，面向农田水量监测与灌溉试验。预期架构为独立 MQTT Broker、Node.js/Fastify 后端、独立 SQLite、React 前端和模拟设备；网关与传感器分开建模。当前仅完成审计，运行命令将在实现后补充。
+项目为田水智联 FieldWater IoT，面向农田水量监测与灌溉试验。预期架构为独立 MQTT Broker、Node.js/Fastify 后端、独立 SQLite、React 前端和模拟设备；网关与传感器分开建模。当前后端可用 `npm ci --prefix backend` 安装、`npm start --prefix backend` 启动、`npm test --prefix backend` 测试；其余服务尚未实现。
 
 项目目录按功能逐步建立：`backend/`、`frontend/`、`simulator/`、`infra/`、`docs/`。不要建立无用途的占位文件。
 

@@ -1,0 +1,8 @@
+{
+  "name": "fieldwater-backend",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": { "start": "node src/server.js", "test": "node --test" },
+  "dependencies": { "fastify": "^5.6.2", "better-sqlite3": "^12.11.1" }
+}
