@@ -2,7 +2,7 @@
 
 田水智联 FieldWater IoT 面向农田水量监测与灌溉试验。架构为独立 Node.js/Fastify 后端、SQLite、React 前端和可扩展的真实数据接入层；网关与传感器分开建模。仅使用实际仪器数据，遵守 `docs/REAL_DATA_POLICY.md`。
 
-目录按功能逐步建立：`backend/`、`frontend/`、`docs/`。后端使用 `npm ci --prefix backend` 安装、`npm start --prefix backend` 启动、`npm test --prefix backend` 测试。其余命令在实现后补充。
+目录按功能逐步建立：`backend/`、`frontend/`、`docs/`。后端使用 `npm ci --prefix backend` 安装、`npm start --prefix backend` 启动、`npm test --prefix backend` 测试。前端使用 `npm ci --prefix frontend` 安装、`npm run dev --prefix frontend` 启动、`npm run build --prefix frontend` 构建。
 
 每个独立功能或文档批次检查敏感信息、运行相关测试、执行 `git diff --check`、检查暂存区，使用英文 Conventional Commits 提交并立即推送；核对远端 SHA。不得强推、擅自重写历史或清理未知文件。保护规则存在时不得绕过。任务结束检查状态。
 
