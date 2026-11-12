@@ -72,6 +72,12 @@ export function buildApp(db) {
     return { total: all.length, online: count('online'), offline: count('offline'), pending: count('pending'), communication_error: count('communication_error'), timeout_unconfigured: count('timeout_unconfigured'), online_rate: all.length ? count('online') / all.length : null, last_received_at: last };
   });
   app.get('/api/telemetry/latest', async () => db.prepare(`SELECT m.*, s.name AS sensor_name, s.gateway_id, r.transport, r.device_timestamp FROM telemetry_measurements m JOIN sensors s ON s.id=m.sensor_id JOIN telemetry_raw r ON r.id=m.raw_id WHERE m.id IN (SELECT m2.id FROM telemetry_measurements m2 WHERE m2.sensor_id=m.sensor_id AND m2.measurement_code=m.measurement_code ORDER BY m2.received_at DESC, m2.id DESC LIMIT 1) ORDER BY m.received_at DESC`).all());
+  app.get('/api/telemetry/raw/:id', async (req, reply) => {
+    if (!/^[1-9]\d*$/.test(req.params.id)) return reply.code(400).send({ error:'无效的原始记录编号' });
+    const row = db.prepare('SELECT * FROM telemetry_raw WHERE id=?').get(req.params.id);
+    if (!row) return reply.code(404).send({ error:'原始记录不存在' });
+    return { ...row, raw_payload: row.raw_payload.toString('hex') };
+  });
   app.get('/api/telemetry/history', async (req) => queryHistory(db, req.query));
   app.get('/api/telemetry/history.csv', async (req, reply) => {
     const { rows } = queryHistory(db, req.query, false);

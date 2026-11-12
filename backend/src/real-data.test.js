@@ -33,6 +33,8 @@ test('empty database, registration, raw retention, deduplication and history', a
     assert.equal(db.prepare("SELECT COUNT(*) n FROM telemetry_raw WHERE parse_status='failed'").get().n, 2);
     const history = await get('/api/telemetry/history?sensor_id=test-sensor');
     assert.equal(history.total, 1); assert.equal(history.rows[0].value, 1); assert.equal(history.rows[0].measured_at, null);
+    const raw = await get('/api/telemetry/raw/' + history.rows[0].raw_id); assert.equal(raw.raw_payload, frame.toString('hex')); assert.equal(raw.source, 'isolated-test');
+    assert.equal((await app.inject('/api/telemetry/raw/9999')).statusCode, 404);
     assert.equal((await get('/api/devices'))[0].status, 'online');
   } finally { await app.close(); db.close(); }
 });
