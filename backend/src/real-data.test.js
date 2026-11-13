@@ -418,3 +418,40 @@ test("CSV escapes formula-like text while retaining negative numeric readings", 
     assert.ok(csv.includes('"\'-1+2"'));
     assert.ok(csv.includes('"-1"'));
   }));
+
+test("v2 raw and measurement rows survive migration but are not silently certified", async () => {
+  const { mkdtempSync, rmSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const Database = (await import("better-sqlite3")).default;
+  const dir = mkdtempSync(join(tmpdir(), "fieldwater-v2-test-")),
+    file = join(dir, "legacy.sqlite");
+  const old = new Database(file);
+  old.exec(`CREATE TABLE schema_migrations(version INTEGER PRIMARY KEY,applied_at TEXT); INSERT INTO schema_migrations VALUES(1,'old'),(2,'old');
+    CREATE TABLE gateways(id TEXT PRIMARY KEY,name TEXT,created_at TEXT,transport TEXT,timeout_seconds INTEGER);
+    CREATE TABLE sensors(id TEXT PRIMARY KEY,gateway_id TEXT,type TEXT,name TEXT,created_at TEXT,manufacturer TEXT,model TEXT,location TEXT,unit TEXT,notes TEXT);
+    CREATE TABLE telemetry_raw(id INTEGER PRIMARY KEY,gateway_id TEXT,sensor_id TEXT,message_id TEXT,raw_payload BLOB,received_at TEXT,device_timestamp TEXT,transport TEXT,source TEXT,parse_status TEXT,parse_error TEXT);
+    CREATE UNIQUE INDEX idx_raw_message ON telemetry_raw(gateway_id,message_id) WHERE message_id IS NOT NULL;
+    CREATE TABLE telemetry_measurements(id INTEGER PRIMARY KEY,raw_id INTEGER,sensor_id TEXT,measurement_code TEXT,value REAL,unit TEXT,measured_at TEXT,received_at TEXT,quality_status TEXT,source TEXT);
+    CREATE TABLE device_events(id INTEGER PRIMARY KEY,gateway_id TEXT,sensor_id TEXT,event_type TEXT,occurred_at TEXT,details TEXT);
+    CREATE TABLE alarms(id INTEGER PRIMARY KEY,sensor_id TEXT,gateway_id TEXT,raised_at TEXT,message TEXT,status TEXT);
+    INSERT INTO gateways(id,name) VALUES('legacy-g','Legacy');
+    INSERT INTO sensors(id,gateway_id,type,name) VALUES('legacy-s','legacy-g','rainfall','Legacy');
+    INSERT INTO telemetry_raw VALUES(7,'legacy-g','legacy-s','old',X'010203','2020-01-01T00:00:00Z',NULL,'test','isolated-test','parsed',NULL);
+    INSERT INTO telemetry_measurements VALUES(8,7,'legacy-s','old',1,'test',NULL,'2020-01-01T00:00:00Z','unknown','isolated-test');`);
+  old.close();
+  const db = openDatabase(file),
+    app = buildApp(db);
+  try {
+    const raw = (await app.inject("/api/telemetry/raw/7")).json();
+    assert.equal(raw.raw_payload, "010203");
+    assert.equal(raw.measurements[0].id, 8);
+    assert.equal(raw.measurements[0].value, 1);
+    assert.equal(raw.measurements[0].value_quality, "legacy_unknown");
+    assert.equal((await app.inject("/api/telemetry/history")).json().total, 0);
+  } finally {
+    await app.close();
+    db.close();
+    rmSync(dir, { recursive: true });
+  }
+});
