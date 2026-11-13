@@ -222,3 +222,47 @@ export function MeasurementTable({ rows }) {
     </div>
   );
 }
+
+export function ExportCsv({ href }) {
+  const [busy, setBusy] = useState(false),
+    [error, setError] = useState("");
+  async function download() {
+    setBusy(true);
+    setError("");
+    try {
+      const response = await fetch(href);
+      if (!response.ok) {
+        let body = {};
+        try {
+          body = await response.json();
+        } catch {}
+        throw Error(body.error || `导出失败 (${response.status})`);
+      }
+      if (!response.headers.get("content-type")?.includes("text/csv"))
+        throw Error("返回格式不是 CSV，请重试或检查后端");
+      const blob = await response.blob(),
+        url = URL.createObjectURL(blob),
+        link = document.createElement("a");
+      link.href = url;
+      link.download = "fieldwater-history.csv";
+      link.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <div className="export-control">
+      <button onClick={download} disabled={busy}>
+        {busy ? "正在导出…" : "导出此范围 CSV"}
+      </button>
+      {error && (
+        <p className="error" role="alert">
+          {error}
+        </p>
+      )}
+    </div>
+  );
+}

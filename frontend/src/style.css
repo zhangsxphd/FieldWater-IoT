@@ -897,3 +897,10 @@ td small {
   color: #168850;
   font-weight: 600;
 }
+
+.export-control .error {
+  font-size: 12px;
+  max-width: 280px;
+  line-height: 1.5;
+  margin: 8px 0 0;
+}

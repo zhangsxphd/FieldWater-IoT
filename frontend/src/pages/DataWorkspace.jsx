@@ -9,6 +9,7 @@ import {
   Status,
   Pagination,
   MeasurementTable,
+  ExportCsv,
   types,
   query,
 } from "../shared.jsx";
@@ -260,12 +261,7 @@ function Results({ params, mode }) {
     <Panel
       title={mode === "analysis" ? "选定记录的描述统计" : "有效测量记录"}
       extra={
-        <a
-          className="secondary"
-          href={"/api/telemetry/history.csv?" + query(filters)}
-        >
-          导出此范围 CSV
-        </a>
+        <ExportCsv href={"/api/telemetry/history.csv?" + query(filters)} />
       }
     >
       <State state={data}>

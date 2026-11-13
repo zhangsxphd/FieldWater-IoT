@@ -169,6 +169,29 @@ async function free(port) {
     await page.getByRole("button", { name: "查询", exact: true }).click();
     await page.getByText("算术均值", { exact: false }).waitFor();
     assert.match(await page.locator("main").innerText(), /1.5 test_unit/);
+    const downloadPromise = page.waitForEvent("download");
+    await page
+      .getByRole("button", { name: "导出此范围 CSV", exact: true })
+      .click();
+    const download = await downloadPromise;
+    await download.saveAs(join(dir, "result.csv"));
+    assert.match(
+      require("node:fs").readFileSync(join(dir, "result.csv"), "utf8"),
+      /test_register/,
+    );
+    await page.route("**/api/telemetry/history.csv?**", (r) =>
+      r.fulfill({
+        status: 413,
+        contentType: "application/json",
+        body: '{"error":"请缩小导出范围"}',
+      }),
+    );
+    await page
+      .getByRole("button", { name: "导出此范围 CSV", exact: true })
+      .click();
+    await page.getByText("请缩小导出范围", { exact: true }).waitFor();
+    assert.match(page.url(), /analysis/);
+    await page.unroute("**/api/telemetry/history.csv?**");
     await page
       .getByRole("link", { name: /查看 #/ })
       .first()
