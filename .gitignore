@@ -12,3 +12,6 @@ logs/
 *.log
 .DS_Store
 coverage/
+backups/
+*.sqlite.manifest.json
+*.db.manifest.json
