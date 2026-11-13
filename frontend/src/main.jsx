@@ -1,70 +1,90 @@
-import React, { useEffect, useState } from 'react';
-import { createRoot } from 'react-dom/client';
-import { BrowserRouter, NavLink, Routes, Route, Link } from 'react-router-dom';
-import { LayoutDashboard, Cpu, Activity, Database, ChartNoAxesCombined, Bell, Settings, Waves, Droplets, CloudRain, RefreshCw, Plus, ChevronRight, Radio, AlertTriangle, Leaf } from 'lucide-react';
-import './style.css';
-
-const labels = {water_level:'水位计', electromagnetic_flow:'电磁流量计', rainfall:'雨量计'};
-const statusLabels = {pending:'待接入', online:'在线', offline:'离线', timeout_unconfigured:'超时未配置', communication_error:'通信异常'};
-const fmt = (value) => value ? new Date(value).toLocaleString('zh-CN', {hour12:false}) : '—';
-async function api(path, options) { const response = await fetch('/api' + path, options); if (!response.ok) { let body; try { body = await response.json(); } catch { body = {}; } throw new Error(body.error || `请求失败 (${response.status})`); } return response.json(); }
-function useData(path) {
-  const [state,setState] = useState({ loading:true, data:null, error:null });
-  const [version, setVersion] = useState(0);
-  useEffect(() => { const controller = new AbortController(); let active = true, running = false; setState({loading:true,data:null,error:null});
-    const fetchData = async () => { if (running) return; running=true; try { const data = await api(path,{signal:controller.signal}); if(active) setState({loading:false,data,error:null}); } catch(error) { if(active && error.name !== 'AbortError') setState({loading:false,data:null,error:error.message}); } finally { running=false; } };
-    fetchData(); const timer = setInterval(fetchData,30000); return () => { active=false; clearInterval(timer); controller.abort(); };
-  }, [path,version]);
-  return {...state, reload:() => setVersion(v=>v+1)};
+import React from "react";
+import { createRoot } from "react-dom/client";
+import { BrowserRouter, NavLink, Routes, Route, Link } from "react-router-dom";
+import {
+  LayoutDashboard,
+  Cpu,
+  Activity,
+  Database,
+  ChartNoAxesCombined,
+  Bell,
+  Settings,
+  Leaf,
+  ClipboardList,
+} from "lucide-react";
+import Overview from "./pages/Overview.jsx";
+import Equipment from "./pages/Equipment.jsx";
+import DataWorkspace from "./pages/DataWorkspace.jsx";
+import Diagnostics from "./pages/Diagnostics.jsx";
+import { Alarms, Settings as SettingsPage } from "./pages/Operations.jsx";
+import { Empty } from "./shared.jsx";
+import "./style.css";
+const nav = [
+  ["/", "数据总览", LayoutDashboard],
+  ["/devices", "设备管理", Cpu],
+  ["/monitor", "实时监测", Activity],
+  ["/history", "历史数据", Database],
+  ["/analysis", "数据分析", ChartNoAxesCombined],
+  ["/diagnostics", "接收诊断", ClipboardList],
+  ["/alarms", "告警管理", Bell],
+  ["/settings", "系统设置", Settings],
+];
+function App() {
+  return (
+    <>
+      <header className="top">
+        <Link to="/" className="brand">
+          <Leaf size={25} />
+          <strong>田水智联</strong>
+          <span>FieldWater IoT</span>
+        </Link>
+        <span className="top-divider" />
+        <span className="top-subtitle">农业灌溉研究监测平台</span>
+        <div className="top-right">
+          <Link to="/diagnostics">接收诊断</Link>
+          <Link to="/settings">本地环境</Link>
+        </div>
+      </header>
+      <aside className="sidebar">
+        <nav>
+          {nav.map(([url, name, Icon]) => (
+            <NavLink key={url} to={url} end={url === "/"} aria-label={name}>
+              <Icon size={19} />
+              <span>{name}</span>
+            </NavLink>
+          ))}
+        </nav>
+        <div className="sidebar-foot">
+          只显示已验证的有效测量
+          <br />
+          接收原文独立保留
+        </div>
+      </aside>
+      <main>
+        <Routes>
+          <Route path="/" element={<Overview />} />
+          <Route path="/devices" element={<Equipment />} />
+          <Route path="/monitor" element={<DataWorkspace mode="monitor" />} />
+          <Route path="/history" element={<DataWorkspace mode="history" />} />
+          <Route path="/analysis" element={<DataWorkspace mode="analysis" />} />
+          <Route path="/diagnostics" element={<Diagnostics />} />
+          <Route path="/alarms" element={<Alarms />} />
+          <Route path="/settings" element={<SettingsPage />} />
+          <Route
+            path="*"
+            element={
+              <Empty to="/" action="返回总览">
+                页面不存在
+              </Empty>
+            }
+          />
+        </Routes>
+      </main>
+    </>
+  );
 }
-function DataState({state, children}) { if (state.loading) return <div className="empty">正在加载数据…</div>; if (state.error) return <div className="empty error" role="alert">加载失败：{state.error} <button className="link" onClick={state.reload}>重试</button></div>; return children(state.data); }
-function Empty({children='暂无实测数据'}) { return <div className="empty"><span className="empty-icon"><Waves size={23}/></span><strong>{children}</strong></div>; }
-function Panel({title, icon:Icon, extra, children, className=''}) { return <section className={'panel '+className}><div className="panel-head"><h2>{Icon && <Icon size={18}/>} {title}</h2>{extra}</div>{children}</section>; }
-function Trend({rows,timeLabel='服务器接收时间'}) {
-  const valid = rows.filter(r => Number.isFinite(r.value) && Number.isFinite(Date.parse(r.received_at))).sort((a,b) => Date.parse(b.received_at)-Date.parse(a.received_at));
-  if (valid.length < 2) return <Empty>{valid.length ? '数据不足，至少需要两条记录' : '暂无实测数据'}</Empty>;
-  const min = Math.min(...valid.map(x=>x.value)); const max = Math.max(...valid.map(x=>x.value));
-  const lo = min === max ? min-1 : min; const hi = min === max ? max+1 : max;
-  const earliest = Date.parse(valid[valid.length-1].received_at); const latest = Date.parse(valid[0].received_at);
-  if (earliest === latest) return <Empty>接收时间相同，暂无法绘制时间趋势</Empty>;
-  const points = [...valid].reverse().map(x => `${40 + (Date.parse(x.received_at)-earliest)*620/(latest-earliest)},${165-(x.value-lo)*125/(hi-lo)}`).join(' ');
-  return <div className="chart"><svg viewBox="0 0 700 200" role="img" aria-label="实测数据变化曲线"><line x1="40" y1="165" x2="660" y2="165" stroke="#cbd8d3"/><line x1="40" y1="40" x2="40" y2="165" stroke="#cbd8d3"/><polyline fill="none" stroke="#158a55" strokeWidth="3" points={points}/><text x="2" y="44">{hi.toFixed(2)}</text><text x="2" y="168">{lo.toFixed(2)}</text></svg><div className="chart-caption"><span>{fmt(valid[valid.length-1].received_at)}</span><span>{timeLabel} · {valid[0].unit}</span><span>{fmt(valid[0].received_at)}</span></div></div>;
-}
-function alarmSeries(rows) {
-  const counts = new Map();
-  for (const row of rows) { const date = new Date(row.raised_at); if (!Number.isFinite(date.getTime())) continue; const key = `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`; counts.set(key,(counts.get(key)||0)+1); }
-  return [...counts.entries()].map(([date,value])=>({ received_at:new Date(date+'T00:00:00').toISOString(), value, unit:'条' }));
-}
-function Dashboard() {
- const summary=useData('/dashboard/summary'), latest=useData('/telemetry/latest'), history=useData('/telemetry/history?limit=100'), devices=useData('/devices'), alarms=useData('/alarms');
- const [series,setSeries]=useState('');
- return <><div className="page-title"><div><h1>数据总览</h1><p>农业灌溉研究监测 · 运行概览</p></div><DataState state={summary}>{d=><span className="updated">最后接收数据：{d.last_received_at ? fmt(d.last_received_at) : '暂无实测数据'}</span>}</DataState></div>
- <Panel className="stats"><DataState state={summary}>{d=><div className="stats-grid">{[['设备在线',d.online],['设备离线',d.offline],['设备总数',d.total],['在线率',d.online_rate === null ? '—' : (d.online_rate*100).toFixed(1)+'%']].map(([name,v])=><div className="stat" key={name}><span>{name}</span><b>{v}</b></div>)}</div>}</DataState></Panel>
- <DataState state={devices}>{deviceRows=><DataState state={latest}>{data=><div className="measure-grid">{[['water_level','水位监测',Waves],['electromagnetic_flow','流量监测',Droplets],['rainfall','降雨监测',CloudRain]].map(([type,title,Icon])=>{ const row=data.find(d=>d.sensor_id && deviceRows.some(x=>x.id===d.sensor_id && x.type===type)); return <section className="metric" key={type}><span className={'metric-icon '+type}><Icon/></span><div><h2>{title}</h2>{row ? <><div className="metric-value">{row.value} <small>{row.unit}</small></div><p>{row.sensor_name} · {row.measurement_code}</p></> : <><div className="no-value">暂无实测数据</div><p>设备接入并上报后显示</p></>}</div></section>; })}</div>}</DataState>}</DataState>
- <div className="dashboard-grid"><div className="stack"><Panel title="近期趋势" icon={ChartNoAxesCombined} extra={<select aria-label="选择趋势指标" value={series} onChange={e=>setSeries(e.target.value)}><option value="">选择设备及指标</option>{history.data && [...new Map(history.data.rows.map(r=>[r.sensor_id+'|'+r.measurement_code+'|'+r.unit,r])).entries()].map(([key,r])=><option key={key} value={key}>{r.sensor_name} · {r.measurement_code} ({r.unit})</option>)}</select>}><DataState state={history}>{d=><Trend rows={series ? d.rows.filter(r=>[r.sensor_id,r.measurement_code,r.unit].join('|')===series) : []}/>}</DataState></Panel><Panel title="告警趋势" icon={Bell}><DataState state={alarms}>{rows=>rows.length ? <><p className="note">按本地日期统计已记录告警，未补齐无记录日期。</p><Trend rows={alarmSeries(rows)} timeLabel="告警发生日期（本地）"/></> : <Empty>暂无告警记录</Empty>}</DataState></Panel></div><div className="stack"><Panel title="通信状态" icon={Radio}><DataState state={devices}>{rows=>rows.length ? <div className="device-list">{rows.map(d=><div key={d.id}><span>{d.name}<small>{d.gateway_id}</small></span><Status value={d.status}/></div>)}</div> : <Empty>暂无设备通信记录</Empty>}</DataState></Panel><Panel title="近期异常" icon={AlertTriangle} extra={<Link to="/alarms">查看全部 <ChevronRight size={14}/></Link>}><DataState state={alarms}>{rows=>rows.length ? <div className="device-list">{rows.slice(0,5).map(a=><div key={a.id}><span>{a.message}<small>{fmt(a.raised_at)}</small></span><span>{a.status}</span></div>)}</div> : <Empty>暂无异常记录</Empty>}</DataState></Panel></div></div></>;
-}
-function Status({value}) { return <span className={'status '+value}>{statusLabels[value] || value}</span>; }
-const fields=[['name','设备名称',true],['id','设备编号',true],['gateway_id','网关编号',true],['manufacturer','厂家'],['model','型号'],['transport','通信方式'],['location','安装位置'],['unit','单位'],['timeout_seconds','网关通信超时（秒）'],['notes','备注']];
-function Devices() {
- const data=useData('/devices'); const [show,setShow]=useState(false), [editing,setEditing]=useState(null), [error,setError]=useState(''), [saving,setSaving]=useState(false);
- async function submit(e){e.preventDefault();setSaving(true);setError(''); const body=Object.fromEntries(new FormData(e.currentTarget)); try {await api(editing ? '/devices/'+encodeURIComponent(editing.id) : '/devices',{method:editing?'PUT':'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});setShow(false);setEditing(null);data.reload();}catch(err){setError(err.message);}finally{setSaving(false)}}
- return <><div className="page-title"><div><h1>设备管理</h1><p>登记真实仪器与网关信息</p></div><button className="primary" onClick={()=>{setEditing(null);setError('');setShow(v=>!v)}}><Plus size={16}/> {show?'取消登记':'登记设备'}</button></div>{show && <Panel title={editing ? "修改设备" : "登记设备"}><form key={editing?.id || "new"} onSubmit={submit} className="form-grid"><label>设备类型 <em>*</em>{editing && <input type="hidden" name="type" value={editing.type}/>}<select name={editing ? undefined : "type"} disabled={Boolean(editing)} required defaultValue={editing?.type || ""}><option value="" disabled>请选择</option>{Object.entries(labels).map(([k,v])=><option key={k} value={k}>{v}</option>)}</select></label>{fields.map(([id,label,required])=><label key={id}>{label} {required&&<em>*</em>}<input name={id} required={required} readOnly={Boolean(editing && (id === "id" || id === "gateway_id"))} defaultValue={editing?.[id] ?? ""} type={id==='timeout_seconds'?'number':'text'} min={id==='timeout_seconds'?1:undefined}/></label>)}<p className="form-note">仅填写已确认的信息。超时未配置时不会自动判定离线；修改网关通信设置会影响该网关关联的所有仪器。</p>{error && <p className="error" role="alert">{error}</p>}<button className="primary" disabled={saving}>{saving?'保存中…':'保存登记'}</button></form></Panel>}<Panel title="已登记设备"><DataState state={data}>{rows=>rows.length ? <div className="table-wrap"><table><thead><tr>{['设备名称','类型','设备编号','网关编号','厂家 / 型号','通信方式','状态','操作'].map(x=><th key={x}>{x}</th>)}</tr></thead><tbody>{rows.map(d=><tr key={d.id}><td>{d.name}</td><td>{labels[d.type]}</td><td>{d.id}</td><td>{d.gateway_id}</td><td>{[d.manufacturer,d.model].filter(Boolean).join(' / ')||'—'}</td><td>{d.transport||'—'}</td><td><Status value={d.status}/></td><td><button onClick={()=>{setEditing(d);setError('');setShow(true)}}>修改</button></td></tr>)}</tbody></table></div> : <Empty>暂无已登记设备</Empty>}</DataState></Panel></>;
-}
-function Monitor(){
- const data=useData('/telemetry/latest'), devices=useData('/devices'), history=useData('/telemetry/history?limit=100'); const [type,setType]=useState('water_level'), [series,setSeries]=useState('');
- return <><div className="page-title"><div><h1>实时监测</h1><p>最新有效测量记录及数据来源 · 每 30 秒刷新</p></div></div><div className="tabs">{Object.entries(labels).map(([id,name])=><button className={type===id?'active':''} onClick={()=>{setType(id);setSeries('')}} key={id}>{name}</button>)}</div><Panel title={labels[type]}><DataState state={devices}>{ds=><DataState state={data}>{rows=>{const found=rows.filter(r=>ds.some(d=>d.id===r.sensor_id&&d.type===type)); return found.length ? <MeasurementTable rows={found}/> : <Empty>暂无实测数据</Empty>}}</DataState>}</DataState></Panel><Panel title="历史变化"><DataState state={devices}>{ds=><DataState state={history}>{d=>{const choices=[...new Map(d.rows.filter(r=>ds.some(x=>x.id===r.sensor_id&&x.type===type)).map(r=>[r.sensor_id+'|'+r.measurement_code+'|'+r.unit,r])).entries()];return <><label className="series-label">选择设备及指标 <select value={series} onChange={e=>setSeries(e.target.value)}><option value="">请选择</option>{choices.map(([key,r])=><option value={key} key={key}>{r.sensor_name} · {r.measurement_code} ({r.unit})</option>)}</select></label><Trend rows={d.rows.filter(r=>[r.sensor_id,r.measurement_code,r.unit].join('|')===series)}/></>}}</DataState>}</DataState></Panel></>;
-}
-function RawRecord({id}) { const [open,setOpen]=useState(false), [state,setState]=useState(null); async function load(){if(open){setOpen(false);return}setOpen(true);setState({loading:true});try{setState({data:await api('/telemetry/raw/'+id)})}catch(error){setState({error:error.message})}} return <div><button onClick={load} className="link">#{id} {open?'收起':'查看'}</button>{open && <div className="raw-record">{state?.loading?'加载中…':state?.error?'加载失败：'+state.error:state?.data ? <><div>传输：{state.data.transport} · 来源：{state.data.source}</div><div>解析：{state.data.parse_status}{state.data.parse_error && ' · '+state.data.parse_error}</div><code>{state.data.raw_payload}</code></> : null}</div>}</div> }
-function MeasurementTable({rows}){return <div className="table-wrap"><table><thead><tr>{['设备','指标','测量值','设备测量时间','服务器接收时间','质量','来源','原始记录'].map(v=><th key={v}>{v}</th>)}</tr></thead><tbody>{rows.map(r=><tr key={r.id}><td>{r.sensor_name}</td><td>{r.measurement_code}</td><td>{r.value} {r.unit}</td><td>{fmt(r.measured_at)}</td><td>{fmt(r.received_at)}</td><td>{r.quality_status}</td><td>{r.source} · {r.transport}</td><td><RawRecord id={r.raw_id}/></td></tr>)}</tbody></table></div>}
-
-function History(){const devices=useData('/devices');const [filter,setFilter]=useState({});const [page,setPage]=useState(0);const params=new URLSearchParams({...filter,limit:'25',offset:String(page*25)});const data=useData('/telemetry/history?'+params);function submit(e){e.preventDefault();const v=Object.fromEntries(new FormData(e.currentTarget));for(const k of ['from','to']) if(v[k]) v[k]=new Date(v[k]).toISOString(); Object.keys(v).forEach(k=>!v[k]&&delete v[k]);setFilter(v);setPage(0)} return <><div className="page-title"><div><h1>历史数据</h1><p>按服务器接收时间查询和导出</p></div><a className="secondary" href={'/api/telemetry/history.csv?'+new URLSearchParams(filter)}>导出 CSV</a></div><Panel title="查询条件"><form onSubmit={submit} className="filters"><label>设备<select name="sensor_id"><option value="">全部设备</option>{devices.data?.map(d=><option key={d.id} value={d.id}>{d.name}</option>)}</select></label><label>监测指标<input name="measurement_code" placeholder="指标代码"/></label><label>开始时间<input name="from" type="datetime-local"/></label><label>结束时间<input name="to" type="datetime-local"/></label><label>排序<select name="order"><option value="desc">最新优先</option><option value="asc">最早优先</option></select></label><button className="primary">查询</button></form></Panel><Panel title="测量记录"><DataState state={data}>{d=><>{d.rows.length ? <MeasurementTable rows={d.rows}/> : <Empty>暂无符合条件的实测数据</Empty>}<div className="pagination"><span>共 {d.total} 条</span><button disabled={page===0} onClick={()=>setPage(p=>p-1)}>上一页</button><button disabled={(page+1)*25>=d.total} onClick={()=>setPage(p=>p+1)}>下一页</button></div></>}</DataState></Panel></>}
-function Alarms(){const data=useData('/alarms');return <><div className="page-title"><div><h1>告警管理</h1><p>查看实际产生的告警记录</p></div></div><Panel title="告警记录"><DataState state={data}>{rows=>rows.length ? <div className="device-list">{rows.map(r=><div key={r.id}><span>{r.message}<small>{fmt(r.raised_at)}</small></span><span>{r.status}</span></div>)}</div> : <Empty>暂无告警记录</Empty>}</DataState></Panel></>}
-function Analysis(){
- const history=useData('/telemetry/history?limit=500'); const [series,setSeries]=useState('');
- return <><div className="page-title"><div><h1>数据分析</h1><p>分析结果以实测数据和明确方法为依据</p></div></div><Panel title="测量数据概况"><DataState state={history}>{d=>{const choices=[...new Map(d.rows.map(r=>[r.sensor_id+'|'+r.measurement_code+'|'+r.unit,r])).entries()]; const rows=d.rows.filter(r=>[r.sensor_id,r.measurement_code,r.unit].join('|')===series && Number.isFinite(r.value)); const values=rows.map(r=>r.value); return <><div className="analysis-select"><label>选择设备及指标 <select value={series} onChange={e=>setSeries(e.target.value)}><option value="">请选择</option>{choices.map(([key,r])=><option key={key} value={key}>{r.sensor_name} · {r.measurement_code} ({r.unit})</option>)}</select></label></div>{rows.length<2 ? <Empty>{d.total ? '请选择至少包含两条记录的指标' : '实测数据不足，暂无法分析'}</Empty> : <><Trend rows={rows}/><div className="analysis-stats"><span>记录数 <strong>{rows.length}</strong></span><span>最小值 <strong>{Math.min(...values)} {rows[0].unit}</strong></span><span>最大值 <strong>{Math.max(...values)} {rows[0].unit}</strong></span><span>算术平均值 <strong>{(values.reduce((a,b)=>a+b,0)/values.length).toFixed(2)} {rows[0].unit}</strong></span></div><p className="form-note">方法：同一设备、指标和单位的记录逐条计算；平均值为数值之和除以记录数，非时间加权。范围：最近返回的最多 500 条记录，按服务器接收时间。原始记录编号：{[...new Set(rows.map(r=>r.raw_id))].join('、')}。完整记录请在历史数据中查询。</p></>}</>}}</DataState></Panel></>;
-}
-function SettingsPage(){return <><div className="page-title"><div><h1>系统设置</h1><p>本地系统状态与接入说明</p></div></div><Panel title="当前环境"><div className="settings-row"><strong>运行模式</strong><span>本地开发</span></div><div className="settings-row"><strong>通信接入</strong><span>待确认现场设备与协议</span></div><div className="settings-row"><strong>用户认证</strong><span>尚未配置，仅限本机使用</span></div></Panel></>}
-const nav=[['/','数据总览',LayoutDashboard],['/devices','设备管理',Cpu],['/monitor','实时监测',Activity],['/history','历史数据',Database],['/analysis','数据分析',ChartNoAxesCombined],['/alarms','告警管理',Bell],['/settings','系统设置',Settings]];
-function App(){return <><header className="top"><Link to="/" className="brand"><span className="brand-mark"><Leaf size={24}/></span><strong>田水智联</strong><span>FieldWater IoT</span></Link><span className="top-divider"/><span className="top-subtitle">农业灌溉研究监测平台</span><div className="top-right"><Link to="/alarms" aria-label="告警管理"><Bell size={20}/></Link><Link to="/settings">本地环境</Link></div></header><aside className="sidebar"><nav>{nav.map(([url,name,Icon])=><NavLink to={url} end={url==='/'} key={url} aria-label={name}><Icon size={19}/><span>{name}</span></NavLink>)}</nav><div className="sidebar-foot"><Radio size={17}/><div>数据来源<small>仅显示实测数据</small></div></div></aside><main><Routes><Route path="/" element={<Dashboard/>}/><Route path="/devices" element={<Devices/>}/><Route path="/monitor" element={<Monitor/>}/><Route path="/history" element={<History/>}/><Route path="/analysis" element={<Analysis/>}/><Route path="/alarms" element={<Alarms/>}/><Route path="/settings" element={<SettingsPage/>}/><Route path="*" element={<Empty>页面不存在</Empty>}/></Routes></main></>}
-
-createRoot(document.getElementById('root')).render(<BrowserRouter><App/></BrowserRouter>);
+createRoot(document.getElementById("root")).render(
+  <BrowserRouter>
+    <App />
+  </BrowserRouter>,
+);

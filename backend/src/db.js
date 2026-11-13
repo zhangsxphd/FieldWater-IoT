@@ -1,15 +1,17 @@
-import Database from 'better-sqlite3';
-import { mkdirSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import Database from "better-sqlite3";
+import { mkdirSync } from "node:fs";
+import { dirname, resolve } from "node:path";
 
 // Migration 1 also adopts databases created by the initial pre-migration release.
 const migrations = [
-  (db) => db.exec(`
+  (db) =>
+    db.exec(`
     CREATE TABLE IF NOT EXISTS gateways (id TEXT PRIMARY KEY, name TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
     CREATE TABLE IF NOT EXISTS sensors (id TEXT PRIMARY KEY, gateway_id TEXT NOT NULL REFERENCES gateways(id), type TEXT NOT NULL CHECK(type IN ('water_level','electromagnetic_flow','rainfall')), name TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
     CREATE INDEX IF NOT EXISTS idx_sensors_gateway ON sensors(gateway_id);
   `),
-  (db) => db.exec(`
+  (db) =>
+    db.exec(`
     ALTER TABLE gateways ADD COLUMN transport TEXT;
     ALTER TABLE gateways ADD COLUMN timeout_seconds INTEGER CHECK(timeout_seconds IS NULL OR timeout_seconds > 0);
     ALTER TABLE sensors ADD COLUMN manufacturer TEXT;
@@ -43,19 +45,58 @@ const migrations = [
       raised_at TEXT NOT NULL, message TEXT NOT NULL, status TEXT NOT NULL
     );
     CREATE INDEX idx_alarms_time ON alarms(raised_at DESC);
-  `)
+  `),
+  (db) =>
+    db.exec(`
+    ALTER TABLE gateways ADD COLUMN manufacturer TEXT;
+    ALTER TABLE gateways ADD COLUMN model TEXT;
+    ALTER TABLE gateways ADD COLUMN firmware_version TEXT;
+    ALTER TABLE gateways ADD COLUMN location TEXT;
+    ALTER TABLE gateways ADD COLUMN notes TEXT;
+    ALTER TABLE sensors ADD COLUMN freshness_seconds INTEGER CHECK(freshness_seconds IS NULL OR freshness_seconds > 0);
+    ALTER TABLE telemetry_raw ADD COLUMN communication_quality TEXT NOT NULL DEFAULT 'legacy_unknown';
+    ALTER TABLE telemetry_raw ADD COLUMN protocol_quality TEXT NOT NULL DEFAULT 'legacy_unknown';
+    ALTER TABLE telemetry_raw ADD COLUMN value_quality TEXT NOT NULL DEFAULT 'legacy_unknown';
+    ALTER TABLE telemetry_raw ADD COLUMN time_quality TEXT NOT NULL DEFAULT 'legacy_unknown';
+    ALTER TABLE telemetry_raw ADD COLUMN duplicate_of INTEGER REFERENCES telemetry_raw(id);
+    ALTER TABLE telemetry_measurements ADD COLUMN communication_quality TEXT NOT NULL DEFAULT 'legacy_unknown';
+    ALTER TABLE telemetry_measurements ADD COLUMN protocol_quality TEXT NOT NULL DEFAULT 'legacy_unknown';
+    ALTER TABLE telemetry_measurements ADD COLUMN value_quality TEXT NOT NULL DEFAULT 'legacy_unknown';
+    ALTER TABLE telemetry_measurements ADD COLUMN time_quality TEXT NOT NULL DEFAULT 'legacy_unknown';
+    DROP INDEX idx_raw_message;
+    CREATE INDEX idx_raw_message ON telemetry_raw(gateway_id, message_id);
+    CREATE INDEX idx_raw_gateway_time ON telemetry_raw(gateway_id, received_at DESC);
+    CREATE INDEX idx_measurements_series_time ON telemetry_measurements(sensor_id, measurement_code, unit, received_at DESC);
+  `),
 ];
 
 export function openDatabase(file) {
-  if (file !== ':memory:') mkdirSync(dirname(resolve(file)), { recursive: true });
+  if (file !== ":memory:")
+    mkdirSync(dirname(resolve(file)), { recursive: true });
   const db = new Database(file);
   try {
-    db.pragma('foreign_keys = ON');
-    db.exec('CREATE TABLE IF NOT EXISTS schema_migrations (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)');
-    const applied = new Set(db.prepare('SELECT version FROM schema_migrations').all().map((row) => row.version));
+    db.pragma("foreign_keys = ON");
+    db.exec(
+      "CREATE TABLE IF NOT EXISTS schema_migrations (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)",
+    );
+    const applied = new Set(
+      db
+        .prepare("SELECT version FROM schema_migrations")
+        .all()
+        .map((row) => row.version),
+    );
     migrations.forEach((migration, i) => {
-      if (!applied.has(i + 1)) db.transaction(() => { migration(db); db.prepare('INSERT INTO schema_migrations (version) VALUES (?)').run(i + 1); })();
+      if (!applied.has(i + 1))
+        db.transaction(() => {
+          migration(db);
+          db.prepare("INSERT INTO schema_migrations (version) VALUES (?)").run(
+            i + 1,
+          );
+        })();
     });
     return db;
-  } catch (error) { db.close(); throw error; }
+  } catch (error) {
+    db.close();
+    throw error;
+  }
 }
