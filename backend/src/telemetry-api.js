@@ -36,7 +36,7 @@ export function registerTelemetryRoutes(app, db) {
       installations: listInstallations(db, { sensor_id: sensor.id }),
       recent_raw: rawRecords(db, { sensor_id: sensor.id, limit: 10 }),
       recent_events: events(db, { gateway_id: sensor.gateway_id, limit: 10 }),
-      alarms: listAlarms(db, { sensor_id: sensor.id }),
+      alarms: listAlarms(db, { gateway_id: sensor.gateway_id }).filter(a => !a.sensor_id || a.sensor_id === sensor.id),
     };
   });
   app.get('/api/devices/:id/profiles', async req => {

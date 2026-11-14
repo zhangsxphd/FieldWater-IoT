@@ -262,7 +262,15 @@ export default function Equipment() {
                         {shown.map((r) => (
                           <tr key={r.id}>
                             <td>
-                              {r.name}
+                              {tab === "sensors" ? (
+                                <Link
+                                  to={"/devices/" + encodeURIComponent(r.id)}
+                                >
+                                  {r.name}
+                                </Link>
+                              ) : (
+                                r.name
+                              )}
                               <small>
                                 {r.id}
                                 {r.type ? " · " + types[r.type] : ""}

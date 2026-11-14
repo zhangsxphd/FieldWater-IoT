@@ -135,6 +135,42 @@ export default function Overview() {
           </div>
         )}
       </State>
+      <Panel
+        title="需要关注"
+        extra={<Link to="/alarms?status=open">待处理告警 →</Link>}
+      >
+        <State state={sensors}>
+          {(rows) => {
+            const needs = rows.filter((r) => r.data_status !== "fresh");
+            return needs.length ? (
+              <div className="attention-list">
+                {needs.map((s) => (
+                  <Link key={s.id} to={"/devices/" + encodeURIComponent(s.id)}>
+                    <span>
+                      <strong>{s.name}</strong>
+                      <small>
+                        {s.data_status === "no_data"
+                          ? "查看指标定义与接收证据"
+                          : s.data_status === "freshness_unconfigured"
+                            ? "核实并配置数据有效期"
+                            : "查看异常指标及原始记录"}
+                      </small>
+                    </span>
+                    <Status value={s.data_status} />
+                    <span aria-hidden="true">→</span>
+                  </Link>
+                ))}
+              </div>
+            ) : (
+              <p className="scope-text">
+                {rows.length
+                  ? "当前未发现需要处理的仪器数据状态；仍可查看接收诊断及协议档案。"
+                  : "先登记网关与仪器，再核实协议并建立试验安装记录。"}
+              </p>
+            );
+          }}
+        </State>
+      </Panel>
       <div className="dashboard-grid">
         <Panel title="网关通信">
           <State state={gateways}>
@@ -179,9 +215,7 @@ export default function Overview() {
                   {rows.map((s) => (
                     <div key={s.id}>
                       <span>
-                        <Link
-                          to={"/monitor?sensor_id=" + encodeURIComponent(s.id)}
-                        >
+                        <Link to={"/devices/" + encodeURIComponent(s.id)}>
                           {s.name}
                         </Link>
                         <small>

@@ -14,6 +14,8 @@ import {
 } from "lucide-react";
 import Overview from "./pages/Overview.jsx";
 import Equipment from "./pages/Equipment.jsx";
+import DeviceDetail from "./pages/DeviceDetail.jsx";
+import Research from "./pages/Research.jsx";
 import DataWorkspace from "./pages/DataWorkspace.jsx";
 import Diagnostics from "./pages/Diagnostics.jsx";
 import { Alarms, Settings as SettingsPage } from "./pages/Operations.jsx";
@@ -22,6 +24,7 @@ import "./style.css";
 const nav = [
   ["/", "数据总览", LayoutDashboard],
   ["/devices", "设备管理", Cpu],
+  ["/research", "试验管理", Leaf],
   ["/monitor", "实时监测", Activity],
   ["/history", "历史数据", Database],
   ["/analysis", "数据分析", ChartNoAxesCombined],
@@ -64,6 +67,8 @@ function App() {
         <Routes>
           <Route path="/" element={<Overview />} />
           <Route path="/devices" element={<Equipment />} />
+          <Route path="/devices/:id" element={<DeviceDetail />} />
+          <Route path="/research" element={<Research />} />
           <Route path="/monitor" element={<DataWorkspace mode="monitor" />} />
           <Route path="/history" element={<DataWorkspace mode="history" />} />
           <Route path="/analysis" element={<DataWorkspace mode="analysis" />} />

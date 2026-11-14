@@ -20,7 +20,11 @@ export const labels = {
   parsed: "解析完成",
   failed: "解析失败",
   duplicate: "重复报文",
-  pending: "待处理 / 待接入",
+  partial: "部分指标待核实",
+  mixed: "指标质量不一致",
+  open: "待处理",
+  acknowledged: "已确认 · 故障未恢复",
+  resolved: "已恢复",
   verified: "已验证",
   valid: "有效",
   invalid: "无效",
@@ -184,6 +188,7 @@ export function MeasurementTable({ rows }) {
               "设备时间",
               "接收时间",
               "时间质量",
+              "试验 / 小区",
               "来源",
               "原始记录",
             ].map((x) => (
@@ -207,6 +212,13 @@ export function MeasurementTable({ rows }) {
                 <Status value={r.time_quality} />
               </td>
               <td>
+                {r.experiment_name || "未归属"}
+                <small>
+                  {r.plot_name ||
+                    (r.measured_at ? "该采集时间无安装记录" : "设备时间缺失")}
+                </small>
+              </td>
+              <td>
                 {r.source}
                 <small>{r.transport}</small>
               </td>
@@ -223,7 +235,7 @@ export function MeasurementTable({ rows }) {
   );
 }
 
-export function ExportCsv({ href }) {
+export function ExportCsv({ href, format = "csv", label }) {
   const [busy, setBusy] = useState(false),
     [error, setError] = useState("");
   async function download() {
@@ -238,13 +250,17 @@ export function ExportCsv({ href }) {
         } catch {}
         throw Error(body.error || `导出失败 (${response.status})`);
       }
-      if (!response.headers.get("content-type")?.includes("text/csv"))
-        throw Error("返回格式不是 CSV，请重试或检查后端");
+      if (
+        !response.headers
+          .get("content-type")
+          ?.includes(format === "csv" ? "text/csv" : "application/json")
+      )
+        throw Error("返回格式不符，请重试或检查后端");
       const blob = await response.blob(),
         url = URL.createObjectURL(blob),
         link = document.createElement("a");
       link.href = url;
-      link.download = "fieldwater-history.csv";
+      link.download = "fieldwater-history." + format;
       link.click();
       setTimeout(() => URL.revokeObjectURL(url), 1000);
     } catch (e) {
@@ -256,7 +272,7 @@ export function ExportCsv({ href }) {
   return (
     <div className="export-control">
       <button onClick={download} disabled={busy}>
-        {busy ? "正在导出…" : "导出此范围 CSV"}
+        {busy ? "正在导出…" : label || "导出此范围 CSV"}
       </button>
       {error && (
         <p className="error" role="alert">
@@ -266,3 +282,24 @@ export function ExportCsv({ href }) {
     </div>
   );
 }
+
+export const semanticsLabels = {
+  unknown: "语义待核实",
+  instantaneous: "瞬时值",
+  cumulative: "累计读数",
+  interval: "时段增量",
+};
+export const localInput = (value) => {
+  const d = new Date(value || "");
+  return Number.isFinite(d.getTime())
+    ? new Date(d.getTime() - d.getTimezoneOffset() * 60000)
+        .toISOString()
+        .slice(0, 16)
+    : "";
+};
+export const post = (path, body) =>
+  api(path, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });

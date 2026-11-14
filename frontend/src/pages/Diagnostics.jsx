@@ -9,6 +9,7 @@ import {
   Status,
   Pagination,
   labels,
+  semanticsLabels,
   fmt,
   query,
 } from "../shared.jsx";
@@ -300,6 +301,18 @@ function RawDetail({ id, close }) {
               原始字节（十六进制），不会覆盖或自动重解析
             </p>
             <pre className="raw-bytes">{r.raw_payload}</pre>
+            {r.profile_snapshot ? (
+              <details className="raw-profile">
+                <summary>查看本次解析使用的档案快照（#{r.profile_id}）</summary>
+                <pre className="audit-json">
+                  {JSON.stringify(JSON.parse(r.profile_snapshot), null, 2)}
+                </pre>
+              </details>
+            ) : (
+              <p className="form-note">
+                本报文未记录协议档案版本，不能推定解析或校准依据。
+              </p>
+            )}
             {r.measurements?.length > 0 && (
               <>
                 <h3>此报文的解码结果</h3>
@@ -312,6 +325,7 @@ function RawDetail({ id, close }) {
                       <tr>
                         <th>指标</th>
                         <th>解码数值</th>
+                        <th>指标语义</th>
                         <th>测量质量</th>
                         <th>时间质量</th>
                       </tr>
@@ -323,6 +337,7 @@ function RawDetail({ id, close }) {
                           <td>
                             {m.value} {m.unit}
                           </td>
+                          <td>{semanticsLabels[m.semantics] || "待核实"}</td>
                           <td>
                             <Status value={m.value_quality} />
                           </td>

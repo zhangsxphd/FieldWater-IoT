@@ -73,7 +73,7 @@ test('historical research attribution follows half-open installation intervals a
 test('device detail combines evidence and independent metric states; configuration updates are audited', () => fixture(async ({app,put}) => {
   put(7);
   const detail=await app.inject('/api/devices/s');assert.equal(detail.statusCode,200);
-  const d=detail.json();assert.equal(d.gateway.id,'g');assert.equal(d.metrics.length,1);assert.equal(d.profiles.length,1);assert.equal(d.recent_raw.total,1);
+  const d=detail.json();assert.equal(d.gateway.id,'g');assert.equal(d.metrics.length,1);assert.equal(d.profiles.length,1);assert.equal(d.recent_raw.total,1);assert.ok(d.alarms.some(a=>a.kind==='gateway_communication'));
   const changed=await app.inject({method:'PUT',url:'/api/devices/s',payload:{name:'Changed isolated instrument'}});assert.equal(changed.statusCode,200,changed.body);
   const audits=(await app.inject('/api/audit?entity_type=sensor&entity_id=s')).json();
   assert.equal(audits.total,1);assert.equal(audits.rows[0].before.name,'Isolated test');assert.equal(audits.rows[0].after.name,'Changed isolated instrument');
