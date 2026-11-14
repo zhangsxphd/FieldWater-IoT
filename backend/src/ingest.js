@@ -1,4 +1,5 @@
 import { deviceTime } from "./quality.js";
+import { getProfile } from "./profiles.js";
 
 // Internal adapter contract, NOT an authentication endpoint. The adapter must first
 // verify gateway identity and binding. No network transport is enabled here.
@@ -14,6 +15,7 @@ export function ingest(
     deviceTimestamp = null,
     receivedAt = new Date().toISOString(),
     communicationVerified = false,
+    profileId = null,
     parse,
   },
 ) {
@@ -84,8 +86,10 @@ export function ingest(
         previous.raw_payload.equals(rawPayload) &&
         previous.device_timestamp ===
           (deviceTimestamp == null ? null : String(deviceTimestamp));
-      db.prepare("UPDATE telemetry_raw SET duplicate_of=? WHERE id=?").run(
+      db.prepare("UPDATE telemetry_raw SET duplicate_of=?,profile_id=?,profile_snapshot=? WHERE id=?").run(
         previous.id,
+        same ? previous.profile_id : null,
+        same ? previous.profile_snapshot : null,
         rawId,
       );
       mark(
@@ -112,55 +116,73 @@ export function ingest(
     receivedAt,
     JSON.stringify({ raw_id: Number(rawId), source, transport }),
   );
+  let profile = null;
+  if (profileId !== null && profileId !== undefined) {
+    try {
+      profile = getProfile(db, profileId);
+      if (profile.sensor_id !== sensorId) throw new Error("protocol profile belongs to a different sensor");
+      db.prepare("UPDATE telemetry_raw SET profile_id=?,profile_snapshot=? WHERE id=?")
+        .run(profile.id, JSON.stringify(profile), rawId);
+    } catch (error) {
+      mark("failed", String(error.message));
+      return { rawId };
+    }
+  }
   if (typeof parse !== "function") {
     mark("failed", "no verified parser configured");
     return { rawId };
   }
-  let measurement;
+  let measurements;
   try {
-    measurement = parse(rawPayload);
+    const decoded = parse(rawPayload);
+    measurements = Array.isArray(decoded) ? decoded : [decoded];
   } catch (error) {
     mark("failed", String(error.message), "invalid");
     return { rawId };
   }
   if (
-    !measurement ||
-    !Number.isFinite(measurement.value) ||
-    typeof measurement.measurement_code !== "string" ||
-    !measurement.measurement_code ||
-    typeof measurement.unit !== "string" ||
-    !measurement.unit
+    measurements.length === 0 || measurements.length > 64
   ) {
-    mark("failed", "invalid decoded measurement", "valid", "invalid");
+    mark("failed", "decoded batch must contain 1–64 measurements", "valid", "invalid");
     return { rawId };
   }
+  const seen = new Set();
+  for (const measurement of measurements) {
+    if (!measurement || typeof measurement !== "object" || Array.isArray(measurement) ||
+      !Number.isFinite(measurement.value) ||
+      typeof measurement.measurement_code !== "string" || !measurement.measurement_code.trim() || measurement.measurement_code.length > 100 ||
+      typeof measurement.unit !== "string" || !measurement.unit.trim() || measurement.unit.length > 64 ||
+      (measurement.quality_status != null && (typeof measurement.quality_status !== "string" || measurement.quality_status.length > 2000))) {
+      mark("failed", "invalid decoded measurement; entire batch rejected", "valid", "invalid");
+      return { rawId };
+    }
+    const key = JSON.stringify([measurement.measurement_code.trim(), measurement.unit.trim()]);
+    if (seen.has(key)) {
+      mark("failed", "duplicate metric within decoded batch; entire batch rejected", "valid", "invalid");
+      return { rawId };
+    }
+    seen.add(key);
+  }
   // The parser must explicitly supply value validity based on documented device semantics.
-  const valueQuality = ["valid", "invalid", "unverified"].includes(
-    measurement.value_quality,
-  )
-    ? measurement.value_quality
-    : "unverified";
-  const qualityStatus = measurement.quality_status || valueQuality;
-  db.transaction(() => {
-    db.prepare(
-      `INSERT INTO telemetry_measurements (raw_id,sensor_id,measurement_code,value,unit,measured_at,received_at,quality_status,source,communication_quality,protocol_quality,value_quality,time_quality)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-    ).run(
-      rawId,
-      sensorId,
-      measurement.measurement_code,
-      measurement.value,
-      measurement.unit,
-      time.measured_at,
-      receivedAt,
-      qualityStatus,
-      source,
-      comm,
-      "valid",
-      valueQuality,
-      time.time_quality,
-    );
-    mark("parsed", null, "valid", valueQuality);
-  })();
-  return { rawId };
+  const qualities = measurements.map((m) => ["valid", "invalid", "unverified"].includes(m.value_quality) ? m.value_quality : "unverified");
+  const aggregateQuality = qualities.includes("invalid") ? "invalid" : qualities.includes("unverified") ? "unverified" : "valid";
+  try {
+    db.transaction(() => {
+      const insert = db.prepare(
+        `INSERT INTO telemetry_measurements (raw_id,sensor_id,measurement_code,value,unit,measured_at,received_at,quality_status,source,communication_quality,protocol_quality,value_quality,time_quality,semantics)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
+      measurements.forEach((measurement, i) => {
+        const code = measurement.measurement_code.trim(), unit = measurement.unit.trim();
+        const definition = profile?.definitions.find((d) => d.measurement_code === code && d.unit === unit);
+        insert.run(rawId, sensorId, code, measurement.value, unit, time.measured_at, receivedAt,
+          measurement.quality_status || qualities[i], source, comm, "valid", qualities[i], time.time_quality,
+          definition?.semantics ?? "unknown");
+      });
+      mark("parsed", null, "valid", aggregateQuality);
+    })();
+  } catch (error) {
+    mark("failed", `measurement batch persistence failed: ${error.message}`, "valid", "not_checked");
+    return { rawId };
+  }
+  return { rawId, measurementCount: measurements.length };
 }

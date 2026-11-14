@@ -68,6 +68,25 @@ const migrations = [
     CREATE INDEX idx_raw_gateway_time ON telemetry_raw(gateway_id, received_at DESC);
     CREATE INDEX idx_measurements_series_time ON telemetry_measurements(sensor_id, measurement_code, unit, received_at DESC);
   `),
+  (db) =>
+    db.exec(`
+    CREATE TABLE protocol_profiles (
+      id INTEGER PRIMARY KEY,
+      sensor_id TEXT NOT NULL REFERENCES sensors(id),
+      version TEXT NOT NULL,
+      protocol_name TEXT, parser_version TEXT, calibration_version TEXT, evidence_ref TEXT,
+      definitions_json TEXT NOT NULL CHECK(json_valid(definitions_json)),
+      created_at TEXT NOT NULL,
+      UNIQUE(sensor_id, version)
+    );
+    CREATE INDEX idx_profiles_sensor ON protocol_profiles(sensor_id, id DESC);
+    CREATE TRIGGER profiles_no_update BEFORE UPDATE ON protocol_profiles BEGIN SELECT RAISE(ABORT, 'protocol profiles are immutable'); END;
+    CREATE TRIGGER profiles_no_delete BEFORE DELETE ON protocol_profiles BEGIN SELECT RAISE(ABORT, 'protocol profiles are immutable'); END;
+    ALTER TABLE telemetry_raw ADD COLUMN profile_id INTEGER REFERENCES protocol_profiles(id);
+    ALTER TABLE telemetry_raw ADD COLUMN profile_snapshot TEXT;
+    ALTER TABLE telemetry_measurements ADD COLUMN semantics TEXT NOT NULL DEFAULT 'unknown' CHECK(semantics IN ('unknown','instantaneous','cumulative','interval'));
+    CREATE INDEX idx_measurements_series_device_time ON telemetry_measurements(sensor_id, measurement_code, unit, measured_at DESC);
+  `),
 ];
 
 export function openDatabase(file) {
