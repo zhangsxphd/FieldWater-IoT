@@ -38,22 +38,30 @@ export function evaluateAlarms(db, now = Date.now()) {
         message: `${row.name}：${row.status === "offline" ? "通信超时" : "通信异常"}` });
     }
     for (const row of sensorRows) {
-      if (!["stale", "invalid_data"].includes(row.data_status) || !row.last_raw_id) continue;
-      const raw = db.prepare("SELECT * FROM telemetry_raw WHERE id=?").get(row.last_raw_id);
-      if (!raw || raw.communication_quality !== "verified" || ["rejected", "duplicate"].includes(raw.parse_status)) continue;
-      const kind = row.data_status === "stale" ? "sensor_stale" : "sensor_invalid";
-      desired.push({ condition_key: `sensor:${row.id}:${kind}`, kind, gateway_id: row.gateway_id,
-        sensor_id: row.id, raw_id: raw.id, event_id: null,
-        message: `${row.name}：${kind === "sensor_stale" ? "有效测量已过期" : "接收或测量质量异常"}` });
+      const affected = row.metrics.filter(m => ["stale", "invalid_data"].includes(m.data_status));
+      // A structurally failed packet has no decoded metric to identify; retain a sensor-level condition.
+      if (row.data_status === "invalid_data" && !affected.length)
+        affected.push({ measurement_code: null, unit: null, data_status: "invalid_data", last_raw_id: row.last_raw_id, last_valid_at: row.last_valid_at });
+      for (const metric of affected) {
+        const rawId = metric.data_status === "stale" ? metric.latest_valid_raw_id : metric.last_raw_id;
+        const raw = db.prepare("SELECT * FROM telemetry_raw WHERE id=?").get(rawId ?? null);
+        if (!raw || raw.communication_quality !== "verified" || ["rejected", "duplicate"].includes(raw.parse_status)) continue;
+        const kind = metric.data_status === "stale" ? "sensor_stale" : "sensor_invalid";
+        desired.push({ condition_key: JSON.stringify(["sensor",row.id,metric.measurement_code,metric.unit,kind]), kind,
+          gateway_id: row.gateway_id,sensor_id:row.id,raw_id:raw.id,event_id:null,
+          measurement_code:metric.measurement_code,unit:metric.unit,observed_at:metric.last_valid_at,
+          message: `${row.name}${metric.measurement_code ? ` / ${metric.measurement_code} (${metric.unit})` : ""}：${kind === "sensor_stale" ? "有效测量已过期" : "接收或测量质量异常"}` });
+      }
     }
     let opened = 0, resolved = 0;
     for (const condition of desired) {
       if (db.prepare("SELECT id FROM alarms WHERE condition_key=? AND resolved_at IS NULL").get(condition.condition_key)) continue;
       const alarmId = Number(db.prepare(`INSERT INTO alarms
-        (sensor_id,gateway_id,raised_at,message,status,condition_key,kind,raw_id,event_id)
-        VALUES (?,?,?,?,'open',?,?,?,?)`)
+        (sensor_id,gateway_id,raised_at,message,status,condition_key,kind,raw_id,event_id,measurement_code,unit,observed_at)
+        VALUES (?,?,?,?,'open',?,?,?,?,?,?,?)`)
         .run(condition.sensor_id, condition.gateway_id, at, condition.message,
-          condition.condition_key, condition.kind, condition.raw_id, condition.event_id).lastInsertRowid);
+          condition.condition_key, condition.kind, condition.raw_id, condition.event_id,
+          condition.measurement_code ?? null,condition.unit ?? null,condition.observed_at ?? null).lastInsertRowid);
       action(db, alarmId, "opened", at, condition.message, "system", condition);
       recordAudit(db, { action: "open", entityType: "alarm", entityId: alarmId,
         after: condition, source: "alarm_evaluator", occurredAt: at, actor: "system" });
@@ -68,12 +76,16 @@ export function evaluateAlarms(db, now = Date.now()) {
           && ["heartbeat", "telemetry_received"].includes(event.event_type)) evidence = { event_id: event.id };
       } else if (["sensor_stale", "sensor_invalid"].includes(alarm.kind)) {
         const current = sensorMap.get(alarm.sensor_id);
-        // Config changes and acknowledgement alone cannot manufacture a fresh measurement.
-        if (current?.data_status === "fresh" && current.last_raw_id > (alarm.raw_id ?? 0)) {
-          const raw = db.prepare("SELECT * FROM telemetry_raw WHERE id=?").get(current.last_raw_id);
-          if (raw?.parse_status === "parsed" && raw.value_quality === "valid"
-            && raw.communication_quality === "verified" && ["valid", "missing"].includes(raw.time_quality))
-            evidence = { raw_id: raw.id };
+        const metric = alarm.measurement_code == null ? null : current?.metrics.find(m => m.measurement_code === alarm.measurement_code && m.unit === alarm.unit);
+        const state = metric || current;
+        const rawId = metric ? metric.latest_valid_raw_id : current?.last_raw_id;
+        // Recovery belongs to the affected metric, and requires a later observation, not merely a new delivery ID.
+        if (state?.data_status === "fresh" && rawId > (alarm.raw_id ?? 0)
+          && (!alarm.observed_at || state.last_valid_at > alarm.observed_at)) {
+          const raw = db.prepare("SELECT * FROM telemetry_raw WHERE id=?").get(rawId);
+          if (raw?.parse_status === "parsed" && raw.communication_quality === "verified"
+            && ["valid", "missing"].includes(raw.time_quality)
+            && (metric || raw.value_quality === "valid")) evidence = { raw_id: raw.id };
         }
       }
       if (!evidence) continue;

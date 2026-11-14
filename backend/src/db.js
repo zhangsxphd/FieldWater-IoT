@@ -89,6 +89,11 @@ const migrations = [
     CREATE INDEX idx_measurements_series_device_time ON telemetry_measurements(sensor_id, measurement_code, unit, measured_at DESC);
   `),
   migrateOperations,
+  (db) => db.exec(`
+    ALTER TABLE alarms ADD COLUMN measurement_code TEXT;
+    ALTER TABLE alarms ADD COLUMN unit TEXT;
+    ALTER TABLE alarms ADD COLUMN observed_at TEXT;
+  `),
 ];
 
 export function openDatabase(file) {

@@ -147,3 +147,22 @@ test("operations HTTP routes validate and expose only actual saved metadata", as
     assert.deepEqual((await app.inject("/api/alarms")).json(), []);
   } finally { await app.close(); db.close(); }
 });
+
+test('an alarm recovers only from a newer observation of its own metric, not sibling data or timeout edits', () => {
+  const db = fixture();
+  const metric = code => () => ({measurement_code:code,value:1,unit:'test_unit',value_quality:'valid'});
+  try {
+    reading(db,'first-a','2026-01-01T00:00:00Z',metric('a'));
+    reading(db,'first-b','2026-01-01T00:02:00Z',metric('b'));
+    const opened = listAlarms(db,{},Date.parse('2026-01-01T00:02:00Z')).find(a=>a.kind==='sensor_stale');
+    assert.equal(opened.measurement_code,'a');
+    db.prepare('UPDATE sensors SET freshness_seconds=3600').run();
+    reading(db,'new-b','2026-01-01T00:02:01Z',metric('b'));
+    assert.equal(listAlarms(db,{},Date.parse('2026-01-01T00:02:01Z')).find(a=>a.id===opened.id).status,'open');
+    ingest(db,{gatewayId:'qa-gateway',sensorId:'qa-sensor',messageId:'late-a',rawPayload:Buffer.from('late-a'),
+      receivedAt:'2026-01-01T00:02:02Z',deviceTimestamp:'2026-01-01T00:00:00Z',transport:'isolated-test',source:'isolated-test',communicationVerified:true,parse:metric('a')});
+    assert.equal(listAlarms(db,{},Date.parse('2026-01-01T00:02:02Z')).find(a=>a.id===opened.id).status,'open');
+    reading(db,'new-a','2026-01-01T00:02:03Z',metric('a'));
+    assert.equal(listAlarms(db,{},Date.parse('2026-01-01T00:02:03Z')).find(a=>a.id===opened.id).status,'resolved');
+  } finally { db.close(); }
+});
