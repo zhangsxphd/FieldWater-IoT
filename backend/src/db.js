@@ -1,4 +1,5 @@
 import Database from "better-sqlite3";
+import { migrateOperations } from "./operations-schema.js";
 import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 
@@ -87,6 +88,7 @@ const migrations = [
     ALTER TABLE telemetry_measurements ADD COLUMN semantics TEXT NOT NULL DEFAULT 'unknown' CHECK(semantics IN ('unknown','instantaneous','cumulative','interval'));
     CREATE INDEX idx_measurements_series_device_time ON telemetry_measurements(sensor_id, measurement_code, unit, measured_at DESC);
   `),
+  migrateOperations,
 ];
 
 export function openDatabase(file) {

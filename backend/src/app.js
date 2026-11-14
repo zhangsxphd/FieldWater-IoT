@@ -1,4 +1,6 @@
 import Fastify from "fastify";
+import { registerOperationsRoutes } from "./operations.js";
+import { recordAudit } from "./audit.js";
 import { gateways, sensors } from "./status.js";
 import { trustedMeasurement } from "./quality.js";
 import { history, rawRecords, events } from "./queries.js";
@@ -73,14 +75,18 @@ export function buildApp(db) {
     const b = objectBody(req.body),
       gid = id(b.id, "网关编号"),
       name = text(b.name, "网关名称", true);
-    db.prepare(
-      `INSERT INTO gateways (id,name,${gatewayFields.join(",")},timeout_seconds) VALUES (?,?,?,?,?,?,?,?,?)`,
-    ).run(
-      gid,
-      name,
-      ...gatewayFields.map((f) => text(b[f], f)),
-      seconds(b.timeout_seconds, "通信超时"),
-    );
+    db.transaction(() => {
+      db.prepare(
+        `INSERT INTO gateways (id,name,${gatewayFields.join(",")},timeout_seconds) VALUES (?,?,?,?,?,?,?,?,?)`,
+      ).run(
+        gid,
+        name,
+        ...gatewayFields.map((f) => text(b[f], f)),
+        seconds(b.timeout_seconds, "通信超时"),
+      );
+      recordAudit(db, { action: "create", entityType: "gateway", entityId: gid, before: null,
+        after: db.prepare("SELECT * FROM gateways WHERE id=?").get(gid), source: "POST /api/gateways" });
+    })();
     return reply.code(201).send({ id: gid });
   });
   app.put("/api/gateways/:id", async (req) => {
@@ -90,14 +96,18 @@ export function buildApp(db) {
     if (!old) fail("网关不存在", 404);
     const b = { ...old, ...objectBody(req.body) };
     if (b.id !== old.id) fail("网关编号不可修改");
-    db.prepare(
-      `UPDATE gateways SET name=?,${gatewayFields.map((f) => `${f}=?`).join(",")},timeout_seconds=? WHERE id=?`,
-    ).run(
-      text(b.name, "网关名称", true),
-      ...gatewayFields.map((f) => text(b[f], f)),
-      seconds(b.timeout_seconds, "通信超时"),
-      old.id,
-    );
+    db.transaction(() => {
+      db.prepare(
+        `UPDATE gateways SET name=?,${gatewayFields.map((f) => `${f}=?`).join(",")},timeout_seconds=? WHERE id=?`,
+      ).run(
+        text(b.name, "网关名称", true),
+        ...gatewayFields.map((f) => text(b[f], f)),
+        seconds(b.timeout_seconds, "通信超时"),
+        old.id,
+      );
+      recordAudit(db, { action: "update", entityType: "gateway", entityId: old.id, before: old,
+        after: db.prepare("SELECT * FROM gateways WHERE id=?").get(old.id), source: "PUT /api/gateways/:id" });
+    })();
     return { id: old.id };
   });
   for (const url of ["/api/devices", "/api/sensors"])
@@ -111,16 +121,20 @@ export function buildApp(db) {
     if (!types.includes(b.type)) fail("传感器类型无效");
     if (!db.prepare("SELECT id FROM gateways WHERE id=?").get(gid))
       fail("请先登记网关");
-    db.prepare(
-      `INSERT INTO sensors (id,gateway_id,type,name,${sensorFields.join(",")},freshness_seconds) VALUES (?,?,?,?,?,?,?,?,?,?)`,
-    ).run(
-      sid,
-      gid,
-      b.type,
-      text(b.name, "传感器名称", true),
-      ...sensorFields.map((f) => text(b[f], f)),
-      seconds(b.freshness_seconds, "数据有效期"),
-    );
+    db.transaction(() => {
+      db.prepare(
+        `INSERT INTO sensors (id,gateway_id,type,name,${sensorFields.join(",")},freshness_seconds) VALUES (?,?,?,?,?,?,?,?,?,?)`,
+      ).run(
+        sid,
+        gid,
+        b.type,
+        text(b.name, "传感器名称", true),
+        ...sensorFields.map((f) => text(b[f], f)),
+        seconds(b.freshness_seconds, "数据有效期"),
+      );
+      recordAudit(db, { action: "create", entityType: "sensor", entityId: sid, before: null,
+        after: db.prepare("SELECT * FROM sensors WHERE id=?").get(sid), source: "POST /api/devices" });
+    })();
     return reply.code(201).send({ id: sid });
   });
   app.put("/api/devices/:id", async (req) => {
@@ -138,14 +152,18 @@ export function buildApp(db) {
       b.gateway_id !== old.gateway_id
     )
       fail("已有传感器的编号、类型和网关关联不可直接修改");
-    db.prepare(
-      `UPDATE sensors SET name=?,${sensorFields.map((f) => `${f}=?`).join(",")},freshness_seconds=? WHERE id=?`,
-    ).run(
-      text(b.name, "传感器名称", true),
-      ...sensorFields.map((f) => text(b[f], f)),
-      seconds(b.freshness_seconds, "数据有效期"),
-      old.id,
-    );
+    db.transaction(() => {
+      db.prepare(
+        `UPDATE sensors SET name=?,${sensorFields.map((f) => `${f}=?`).join(",")},freshness_seconds=? WHERE id=?`,
+      ).run(
+        text(b.name, "传感器名称", true),
+        ...sensorFields.map((f) => text(b[f], f)),
+        seconds(b.freshness_seconds, "数据有效期"),
+        old.id,
+      );
+      recordAudit(db, { action: "update", entityType: "sensor", entityId: old.id, before: old,
+        after: db.prepare("SELECT * FROM sensors WHERE id=?").get(old.id), source: "PUT /api/devices/:id" });
+    })();
     return { id: old.id };
   });
   app.get("/api/dashboard/summary", async () => {
@@ -244,8 +262,6 @@ export function buildApp(db) {
           ].join("\r\n"),
       );
   });
-  app.get("/api/alarms", async () =>
-    db.prepare("SELECT * FROM alarms ORDER BY raised_at DESC,id DESC").all(),
-  );
+  registerOperationsRoutes(app, db);
   return app;
 }

@@ -375,7 +375,7 @@ test("migration adopts legacy database without deletion and does not invent lega
     assert.equal(db.prepare("SELECT count(*) n FROM sensors").get().n, 1);
     assert.equal(
       db.prepare("SELECT count(*) n FROM schema_migrations").get().n,
-      4,
+      5,
     );
     db.close();
     db = openDatabase(file);
