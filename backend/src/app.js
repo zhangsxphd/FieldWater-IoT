@@ -1,5 +1,6 @@
 import Fastify from "fastify";
 import { registerOperationsRoutes } from "./operations.js";
+import { registerTelemetryRoutes } from "./telemetry-api.js";
 import { recordAudit } from "./audit.js";
 import { gateways, sensors } from "./status.js";
 import { trustedMeasurement } from "./quality.js";
@@ -227,41 +228,7 @@ export function buildApp(db) {
         .all(row.id),
     };
   });
-  app.get("/api/telemetry/history.csv", async (req, reply) => {
-    const { rows } = history(db, req.query, false);
-    const fields = [
-      "sensor_id",
-      "sensor_name",
-      "gateway_id",
-      "measurement_code",
-      "value",
-      "unit",
-      "measured_at",
-      "received_at",
-      "communication_quality",
-      "protocol_quality",
-      "value_quality",
-      "time_quality",
-      "source",
-      "transport",
-      "raw_id",
-    ];
-    const cell = (v) =>
-      `"${(typeof v === "string" ? v.replace(/^[=+@\t\r-]/, "'$&") : String(v ?? "")).replaceAll('"', '""')}"`;
-    return reply
-      .type("text/csv; charset=utf-8")
-      .header(
-        "Content-Disposition",
-        'attachment; filename="fieldwater-history.csv"',
-      )
-      .send(
-        "\uFEFF" +
-          [
-            fields.join(","),
-            ...rows.map((r) => fields.map((f) => cell(r[f])).join(",")),
-          ].join("\r\n"),
-      );
-  });
   registerOperationsRoutes(app, db);
+  registerTelemetryRoutes(app, db);
   return app;
 }
