@@ -4,67 +4,20 @@ const assert = require("node:assert/strict");
 const { mkdtempSync, rmSync, mkdirSync } = require("node:fs");
 const { tmpdir } = require("node:os");
 const { join, resolve } = require("node:path");
-const { pathToFileURL } = require("node:url");
-const { spawn } = require("node:child_process");
-const net = require("node:net");
 const root = resolve(__dirname, "..");
-const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-async function free(port) {
-  await new Promise((resolve, reject) => {
-    const s = net.createServer();
-    s.once("error", () =>
-      reject(
-        Error(
-          `Port ${port} occupied; stop your local development service before QA`,
-        ),
-      ),
-    );
-    s.listen(port, "127.0.0.1", () => s.close(resolve));
-  });
-}
 (async () => {
-  await free(3181);
-  await free(5181);
+  const { startLocalPreview } = await import("../frontend/scripts/local-preview.mjs");
+  const { buildApp } = await import("../backend/src/app.js");
+  const { openDatabase } = await import("../backend/src/db.js");
   const dir = mkdtempSync(join(tmpdir(), "fieldwater-ui-test-")),
     file = join(dir, "isolated.sqlite");
-  let browser;
-  const children = [];
+  let browser, server;
   try {
-    children.push(
-      spawn(process.execPath, ["src/server.js"], {
-        cwd: join(root, "backend"),
-        env: { ...process.env, FIELDWATER_DB: file, PORT: "3181" },
-        stdio: "ignore",
-      }),
-    );
-    children.push(
-      spawn(
-        process.execPath,
-        [
-          "node_modules/vite/bin/vite.js",
-          "--host",
-          "127.0.0.1",
-          "--port",
-          "5181",
-          "--strictPort",
-        ],
-        { cwd: join(root, "frontend"), stdio: "ignore" },
-      ),
-    );
-    let ready = false;
-    for (let i = 0; i < 100; i++) {
-      if (children.some((p) => p.exitCode !== null))
-        throw Error("QA service failed to start");
-      try {
-        const r = await fetch("http://127.0.0.1:5181/api/health");
-        if (r.ok) {
-          ready = true;
-          break;
-        }
-      } catch {}
-      await delay(100);
-    }
-    assert.ok(ready, "QA services ready");
+    const database = openDatabase(file);
+    const app = buildApp(database, { developmentUi: false, logger: false });
+    app.addHook("onClose", async () => database.close());
+    server = await startLocalPreview(app);
+    const base = "http://127.0.0.1:" + server.httpServer.address().port;
     browser = await chromium.launch(
       process.env.CHROME_PATH
         ? { executablePath: process.env.CHROME_PATH, headless: true }
@@ -98,7 +51,7 @@ async function free(port) {
         .toISOString()
         .slice(0, 16);
     };
-    await page.goto("http://127.0.0.1:5181/", { waitUntil: "networkidle" });
+    await page.goto(base + "/", { waitUntil: "networkidle" });
     assert.match(
       await page.locator("main").innerText(),
       /开始建立你的监测系统/,
@@ -117,7 +70,7 @@ async function free(port) {
       "/alarms",
       "/settings",
     ]) {
-      await page.goto("http://127.0.0.1:5181" + route, {
+      await page.goto(base + route, {
         waitUntil: "networkidle",
       });
       assert.ok((await page.locator("main").innerText()).length > 40);
@@ -187,11 +140,11 @@ async function free(port) {
       .waitFor();
     assert.equal(await page.locator(".indicator").count(), 2);
     const profiles = await (
-      await fetch("http://127.0.0.1:3181/api/devices/qa-sensor-a/profiles")
+      await fetch(base + "/api/devices/qa-sensor-a/profiles")
     ).json();
     assert.equal(profiles.length, 1);
     const profileId = profiles[0].id;
-    await page.goto("http://127.0.0.1:5181/research", {
+    await page.goto(base + "/research", {
       waitUntil: "networkidle",
     });
     await page.getByRole("button", { name: "新建试验", exact: true }).click();
@@ -239,12 +192,7 @@ async function free(port) {
     await page.getByRole("button", { name: "保存记录", exact: true }).click();
     await page.getByRole("button", { name: "结束安装", exact: true }).waitFor();
     await shot("research-isolated-desktop");
-    const { openDatabase } = await import(
-      pathToFileURL(join(root, "backend/src/db.js"))
-    );
-    const { ingest } = await import(
-      pathToFileURL(join(root, "backend/src/ingest.js"))
-    );
+    const { ingest } = await import("../backend/src/ingest.js");
     const db = openDatabase(file);
     try {
       for (const [i, value] of [1, 2].entries())
@@ -286,7 +234,7 @@ async function free(port) {
     } finally {
       db.close();
     }
-    await page.goto("http://127.0.0.1:5181/devices?tab=sensors", {
+    await page.goto(base + "/devices?tab=sensors", {
       waitUntil: "networkidle",
     });
     assert.match(
@@ -297,7 +245,7 @@ async function free(port) {
       await page.locator("tr").filter({ hasText: "qa-sensor-b" }).innerText(),
       /无有效数据/,
     );
-    await page.goto("http://127.0.0.1:5181/analysis?sensor_id=qa-sensor-a", {
+    await page.goto(base + "/analysis?sensor_id=qa-sensor-a", {
       waitUntil: "networkidle",
     });
     await page
@@ -360,7 +308,7 @@ async function free(port) {
       await page.locator(".raw-profile").innerText(),
       /isolated-test-parser/,
     );
-    await page.goto("http://127.0.0.1:5181/diagnostics?parse_status=rejected", {
+    await page.goto(base + "/diagnostics?parse_status=rejected", {
       waitUntil: "networkidle",
     });
     await page
@@ -400,7 +348,7 @@ async function free(port) {
     } finally {
       problemDb.close();
     }
-    await page.goto("http://127.0.0.1:5181/devices/qa-sensor-a", {
+    await page.goto(base + "/devices/qa-sensor-a", {
       waitUntil: "networkidle",
     });
     const indicator = page
@@ -490,13 +438,13 @@ async function free(port) {
       "/research",
       "/devices/qa-sensor-a",
     ]) {
-      await page.goto("http://127.0.0.1:5181" + route, {
+      await page.goto(base + route, {
         waitUntil: "networkidle",
       });
       assert.ok((await page.locator("h1").textContent()).length > 0);
     }
     await page.setViewportSize({ width: 390, height: 844 });
-    await page.goto("http://127.0.0.1:5181/", { waitUntil: "networkidle" });
+    await page.goto(base + "/", { waitUntil: "networkidle" });
     assert.equal(
       await page.evaluate(
         () =>
@@ -523,14 +471,7 @@ async function free(port) {
     );
   } finally {
     if (browser) await browser.close();
-    for (const child of children) child.kill("SIGTERM");
-    await Promise.all(
-      children.map((child) =>
-        child.exitCode !== null
-          ? Promise.resolve()
-          : new Promise((r) => child.once("exit", r)),
-      ),
-    );
+    if (server) await server.close();
     rmSync(dir, { recursive: true });
   }
 })().catch((e) => {

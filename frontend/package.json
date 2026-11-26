@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite --host 127.0.0.1 --port 5181 --strictPort",
     "build": "vite build",
+    "pretest:e2e": "npm run build",
     "test:e2e": "node ../tests/ui-workflow.cjs"
   },
   "dependencies": {

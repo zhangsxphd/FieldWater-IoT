@@ -18,10 +18,10 @@
 
 ## 本地启动
 
-需要 Node.js 24、npm。实际本地项目路径：`/Users/zhangshuxuan/Documents/FieldWater-IoT`。
+需要 Node.js 24、npm。实际本地项目路径：`/Users/zhangshuxuan/Documents/Project/FieldWater-IoT`。
 
 ```sh
-cd /Users/zhangshuxuan/Documents/FieldWater-IoT
+cd /Users/zhangshuxuan/Documents/Project/FieldWater-IoT
 npm ci --prefix backend
 npm ci --prefix frontend
 npm start --prefix backend
@@ -30,7 +30,7 @@ npm start --prefix backend
 另开终端：
 
 ```sh
-cd /Users/zhangshuxuan/Documents/FieldWater-IoT
+cd /Users/zhangshuxuan/Documents/Project/FieldWater-IoT
 npm run dev --prefix frontend
 ```
 
@@ -47,7 +47,7 @@ npm run build --prefix frontend
 npm run test:e2e --prefix frontend
 ```
 
-浏览器测试默认使用本机 Google Chrome，可用 `CHROME_PATH` 指定可执行文件。测试自行创建临时 SQLite，并启动独立服务；3181/5181 被占用时拒绝复用，不停止已有服务。Linux CI 安装 Playwright Chromium，以 `CI=true` 运行相同流程。每次推送 main 后 GitHub Actions 自动检查锁文件安装、仓库文件、后端、构建和浏览器流程，实际状态查看 [Actions](https://github.com/zhangsxphd/FieldWater-IoT/actions)。
+浏览器测试默认使用本机 Google Chrome，可用 `CHROME_PATH` 指定可执行文件。测试自行构建前端，创建临时 SQLite，并由操作系统分配独立的本机端口，可与日常开发服务同时运行。Linux CI 安装 Playwright Chromium，以 `CI=true` 运行相同流程。每次推送 main 后 GitHub Actions 自动检查锁文件安装、仓库文件、后端、构建和浏览器流程，实际状态查看 [Actions](https://github.com/zhangsxphd/FieldWater-IoT/actions)。
 
 测试记录见 [TESTING.md](docs/TESTING.md)。测试向量不是仪器实测，不进入业务库；没有模拟器、演示模式或数据填充按钮。
 

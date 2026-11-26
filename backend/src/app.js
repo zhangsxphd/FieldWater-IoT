@@ -31,8 +31,8 @@ function groupCount(rows, key, values) {
   };
 }
 
-export function buildApp(db) {
-  const app = Fastify({ logger: true, bodyLimit: 65536 });
+export function buildApp(db, { developmentUi = true, logger = true } = {}) {
+  const app = Fastify({ logger, bodyLimit: 65536 });
   app.setErrorHandler((error, req, reply) => {
     if (
       error.code === "SQLITE_CONSTRAINT_PRIMARYKEY" ||
@@ -51,14 +51,11 @@ export function buildApp(db) {
       ["POST", "PUT", "PATCH", "DELETE"].includes(req.method) &&
       req.headers.origin
     ) {
-      if (
-        ![
-          "http://127.0.0.1:5181",
-          "http://localhost:5181",
-          "http://127.0.0.1:3181",
-          "http://localhost:3181",
-        ].includes(req.headers.origin)
-      )
+      const ports = [req.raw.socket.localPort];
+      if (developmentUi) ports.push(5181);
+      const allowed = ports.some(port => Number.isInteger(port) &&
+        ["http://127.0.0.1:" + port, "http://localhost:" + port].includes(req.headers.origin));
+      if (!allowed)
         return reply.code(403).send({ error: "不允许跨站修改本地数据" });
     }
   });
