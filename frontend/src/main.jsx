@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter, NavLink, Routes, Route, Link } from "react-router-dom";
 import {
@@ -19,7 +19,7 @@ import Research from "./pages/Research.jsx";
 import DataWorkspace from "./pages/DataWorkspace.jsx";
 import Diagnostics from "./pages/Diagnostics.jsx";
 import { Alarms, Settings as SettingsPage } from "./pages/Operations.jsx";
-import { Empty } from "./shared.jsx";
+import { Empty, RuntimeMode, State, useData } from "./shared.jsx";
 import "./style.css";
 const nav = [
   ["/", "数据总览", LayoutDashboard],
@@ -33,19 +33,30 @@ const nav = [
   ["/settings", "系统设置", Settings],
 ];
 function App() {
+  const health = useData("/health");
+  return <State state={health}>{data => <Workspace mode={data.mode || "live"} />}</State>;
+}
+function Workspace({ mode }) {
+  const demo = mode === "demo";
+  useEffect(() => {
+    document.title = demo ? "田水智联 · 演示模式" : "田水智联 FieldWater IoT";
+  }, [demo]);
   return (
-    <>
+    <RuntimeMode.Provider value={mode}>
       <header className="top">
         <Link to="/" className="brand">
           <Leaf size={25} />
           <strong>田水智联</strong>
           <span>FieldWater IoT</span>
         </Link>
+        {demo && <span className="demo-badge">演示模式</span>}
         <span className="top-divider" />
-        <span className="top-subtitle">农业灌溉研究监测平台</span>
+        <span className="top-subtitle">{demo ? "示例数据 · 重启后还原" : "农业灌溉研究监测平台"}</span>
         <div className="top-right">
-          <Link to="/diagnostics">接收诊断</Link>
-          <Link to="/settings">本地环境</Link>
+          {demo ? <a href="http://127.0.0.1:5181/">返回正式平台 ↗</a> : <>
+            <Link to="/diagnostics">接收诊断</Link>
+            <Link to="/settings">本地环境</Link>
+          </>}
         </div>
       </header>
       <aside className="sidebar">
@@ -58,7 +69,7 @@ function App() {
           ))}
         </nav>
         <div className="sidebar-foot">
-          只显示已验证的有效测量
+          {demo ? "示例操作仅存于本机内存" : "只显示已验证的有效测量"}
           <br />
           接收原文独立保留
         </div>
@@ -85,7 +96,7 @@ function App() {
           />
         </Routes>
       </main>
-    </>
+    </RuntimeMode.Provider>
   );
 }
 createRoot(document.getElementById("root")).render(

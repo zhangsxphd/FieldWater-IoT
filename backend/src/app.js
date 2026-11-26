@@ -31,7 +31,8 @@ function groupCount(rows, key, values) {
   };
 }
 
-export function buildApp(db, { developmentUi = true, logger = true } = {}) {
+export function buildApp(db, { developmentUi = true, logger = true, mode = "live", now = Date.now } = {}) {
+  if (mode === "demo" && !db.memory) throw new Error("Demo requires an in-memory database");
   const app = Fastify({ logger, bodyLimit: 65536 });
   app.setErrorHandler((error, req, reply) => {
     if (
@@ -59,14 +60,14 @@ export function buildApp(db, { developmentUi = true, logger = true } = {}) {
         return reply.code(403).send({ error: "不允许跨站修改本地数据" });
     }
   });
-  app.get("/api/health", async () => ({ status: "ok" }));
-  app.get("/api/gateways", async () => gateways(db));
+  app.get("/api/health", async () => ({ status: "ok", mode }));
+  app.get("/api/gateways", async () => gateways(db, now()));
   app.get("/api/gateways/:id", async (req) => {
-    const gateway = gateways(db).find((g) => g.id === req.params.id);
+    const gateway = gateways(db, now()).find((g) => g.id === req.params.id);
     if (!gateway) fail("网关不存在", 404);
     return {
       ...gateway,
-      sensors: sensors(db).filter((s) => s.gateway_id === gateway.id),
+      sensors: sensors(db, now()).filter((s) => s.gateway_id === gateway.id),
     };
   });
   app.post("/api/gateways", async (req, reply) => {
@@ -109,7 +110,7 @@ export function buildApp(db, { developmentUi = true, logger = true } = {}) {
     return { id: old.id };
   });
   for (const url of ["/api/devices", "/api/sensors"])
-    app.get(url, async () => sensors(db));
+    app.get(url, async () => sensors(db, now()));
   app.post("/api/devices", async (req, reply) => {
     const b = objectBody(req.body),
       sid = id(b.id, "传感器编号"),
@@ -165,8 +166,8 @@ export function buildApp(db, { developmentUi = true, logger = true } = {}) {
     return { id: old.id };
   });
   app.get("/api/dashboard/summary", async () => {
-    const gs = gateways(db),
-      ss = sensors(db);
+    const gs = gateways(db, now()),
+      ss = sensors(db, now());
     const gatewayCounts = groupCount(gs, "status", [
       "pending",
       "online",
@@ -225,7 +226,7 @@ export function buildApp(db, { developmentUi = true, logger = true } = {}) {
         .all(row.id),
     };
   });
-  registerOperationsRoutes(app, db);
-  registerTelemetryRoutes(app, db);
+  registerOperationsRoutes(app, db, now);
+  registerTelemetryRoutes(app, db, { mode, now });
   return app;
 }

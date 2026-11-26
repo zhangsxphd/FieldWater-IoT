@@ -1,6 +1,6 @@
 import React from "react";
 import { Empty, fmt } from "../shared.jsx";
-export default function Trend({ rows, timeBasis = "received_at", gapSeconds }) {
+export default function Trend({ rows, timeBasis = "received_at", gapSeconds, compact = false }) {
   const basis = timeBasis === "measured_at" ? "measured_at" : "received_at";
   const label = basis === "measured_at" ? "设备采集时间" : "服务器接收时间";
   const points = rows
@@ -33,6 +33,7 @@ export default function Trend({ rows, timeBasis = "received_at", gapSeconds }) {
         gapSeconds * 1000
       )
         segments.push([points[i - 1], points[i]]);
+  const timeLabel = compact ? v => new Date(v).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", hour12: false }) : fmt;
   return (
     <div className="chart">
       <svg
@@ -68,18 +69,18 @@ export default function Trend({ rows, timeBasis = "received_at", gapSeconds }) {
         </text>
       </svg>
       <div className="chart-caption">
-        <span>{fmt(points[0][basis])}</span>
+        <span>{timeLabel(points[0][basis])}</span>
         <span>
           {points[0].unit} · {label}
         </span>
-        <span>{fmt(points.at(-1)[basis])}</span>
+        <span>{timeLabel(points.at(-1)[basis])}</span>
       </div>
-      <p className="form-note">
+      {!compact && <p className="form-note">
         {gapSeconds > 0
           ? "超出已配置连续间隔时断开连线。"
           : "连续采样间隔尚未定义，以观测点显示趋势。"}{" "}
         不补齐缺失记录，不用接收时间替代采集时间。
-      </p>
+      </p>}
     </div>
   );
 }

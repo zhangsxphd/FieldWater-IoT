@@ -109,12 +109,12 @@ export function listAlarms(db, query = {}, now = Date.now()) {
   return db.prepare(`SELECT id FROM alarms ${clauses.length ? `WHERE ${clauses.join(" AND ")}` : ""}
     ORDER BY raised_at DESC,id DESC`).all(...params).map((row) => getAlarm(db, row.id));
 }
-export function acknowledgeAlarm(db, alarmId, input) {
+export function acknowledgeAlarm(db, alarmId, input, now = Date.now()) {
   const aid = positiveId(alarmId), b = objectBody(input), note = text(b.note, "处理说明", true);
   return db.transaction(() => {
     const before = getAlarm(db, aid);
     if (before.status !== "open" || before.resolved_at) fail("仅待确认的活动告警可以确认", 409);
-    const at = new Date().toISOString();
+    const at = new Date(now).toISOString();
     db.prepare("UPDATE alarms SET status='acknowledged',acknowledged_at=? WHERE id=?").run(at, aid);
     action(db, aid, "acknowledged", at, note, "local_operator");
     const after = getAlarm(db, aid);
@@ -123,10 +123,10 @@ export function acknowledgeAlarm(db, alarmId, input) {
     return after;
   })();
 }
-export function addAlarmNote(db, alarmId, input) {
+export function addAlarmNote(db, alarmId, input, now = Date.now()) {
   const aid = positiveId(alarmId), b = objectBody(input), note = text(b.note, "处理说明", true);
   return db.transaction(() => {
-    const before = getAlarm(db, aid), at = new Date().toISOString();
+    const before = getAlarm(db, aid), at = new Date(now).toISOString();
     action(db, aid, "note", at, note, "local_operator");
     recordAudit(db, { action: "note", entityType: "alarm", entityId: aid,
       before: { status: before.status }, after: { note }, source: `/api/alarms/${aid}/notes`, occurredAt: at });

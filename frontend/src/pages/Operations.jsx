@@ -1,4 +1,5 @@
-import React, { useState } from "react";
+import React, { useContext, useState } from "react";
+import { DemoRainExercise } from "../components/DemoWorkspace.jsx";
 import { Link, useSearchParams } from "react-router-dom";
 import {
   useData,
@@ -12,6 +13,7 @@ import {
   query,
   post,
   Pagination,
+  RuntimeMode,
 } from "../shared.jsx";
 const alarmKinds = {
   gateway_communication: "网关通信异常",
@@ -19,6 +21,7 @@ const alarmKinds = {
   sensor_invalid: "仪器数据异常",
 };
 export function Alarms() {
+  const demo = useContext(RuntimeMode) === "demo";
   const [params, setParams] = useSearchParams(),
     data = useData("/alarms?" + params.toString());
   const [editor, setEditor] = useState(null),
@@ -53,6 +56,8 @@ export function Alarms() {
       >
         <Refresh onClick={data.reload} />
       </Title>
+      {demo && (!params.has("sensor_id") || params.get("sensor_id") === "demo-rain") &&
+        <DemoRainExercise onSample={data.reload} />}
       <Panel title="告警范围">
         <form
           className="filters"
@@ -213,7 +218,7 @@ export function Alarms() {
                                   opened: "触发告警",
                                   acknowledged: "人工确认",
                                   note: "处理备注",
-                                  resolved: "实际状态恢复",
+                                  resolved: "收到恢复证据",
                                 }[action.action] || action.action}
                               </strong>
                               <span>
@@ -254,15 +259,24 @@ export function Alarms() {
   );
 }
 export function Settings() {
+  const demo = useContext(RuntimeMode) === "demo";
   const gateways = useData("/gateways"),
     sensors = useData("/devices");
   return (
     <>
       <Title
         title="系统设置与接入准备"
-        description="检查真实配置缺项，并追溯本地档案和处置操作。"
+        description={demo ? "查看演示环境、示例档案与本次演练的处置记录。" : "检查真实配置缺项，并追溯本地档案和处置操作。"}
       />
       <Panel title="当前运行能力">
+        <div className="settings-row">
+          <strong>数据环境</strong>
+          <span>{demo ? "演示模式 · 示例操作在进程退出时清空" : "正式平台 · 本机独立数据库"}</span>
+        </div>
+        {!demo && <details className="demo-entry">
+          <summary>使用独立演示平台</summary>
+          <p>在项目根目录运行 <code>npm run demo --prefix frontend</code>，然后<a href="http://127.0.0.1:5182/">打开演示平台 ↗</a>。</p>
+        </details>}
         <div className="settings-row">
           <strong>网络范围</strong>
           <span>本机开发服务 · 127.0.0.1</span>

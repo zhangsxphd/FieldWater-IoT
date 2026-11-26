@@ -1,7 +1,8 @@
-import React, { useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import React, { useContext, useState } from "react";
+import { Link, Navigate, useSearchParams } from "react-router-dom";
 import {
   useData,
+  RuntimeMode,
   State,
   Panel,
   Title,
@@ -17,8 +18,10 @@ import {
   fmt,
 } from "../shared.jsx";
 import Trend from "../components/Trend.jsx";
+import { demoLevelScope } from "../components/DemoWorkspace.jsx";
 export default function DataWorkspace({ mode }) {
   const [params, setParams] = useSearchParams();
+  const demo = useContext(RuntimeMode) === "demo";
   const devices = useData("/devices"),
     series = useData("/telemetry/series"),
     experiments = useData("/experiments"),
@@ -52,6 +55,7 @@ export default function DataWorkspace({ mode }) {
     delete v.series;
     setParams(query({ ...v, measurement_code, unit }));
   }
+  if (demo && !params.size) return <Navigate replace to={"?" + demoLevelScope} />;
   return (
     <>
       <div className="tabs context-tabs">

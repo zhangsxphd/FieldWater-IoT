@@ -1,6 +1,7 @@
-import React, { useEffect, useState } from "react";
+import React, { createContext, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { Waves, RefreshCw } from "lucide-react";
+export const RuntimeMode = createContext("live");
 export const types = {
   water_level: "水位计",
   electromagnetic_flow: "电磁流量计",
@@ -260,7 +261,8 @@ export function ExportCsv({ href, format = "csv", label }) {
         url = URL.createObjectURL(blob),
         link = document.createElement("a");
       link.href = url;
-      link.download = "fieldwater-history." + format;
+      const file = response.headers.get("content-disposition")?.match(/filename="([a-z0-9.-]+)"/i);
+      link.download = file?.[1] || "fieldwater-history." + format;
       link.click();
       setTimeout(() => URL.revokeObjectURL(url), 1000);
     } catch (e) {

@@ -38,6 +38,21 @@ npm run dev --prefix frontend
 
 默认数据库 `backend/data/fieldwater.sqlite`（上述 npm 启动方式）；可用 `FIELDWATER_DB` 指定本项目独立路径。首次运行只建表，不填入任何网关、仪器或测量。**升级有实际数据的数据库前，先执行并验证[备份与恢复](docs/BACKUP.md)。** 本次开发只对临时数据库执行迁移与测试。
 
+## 本地演示模式
+
+安装上述前后端依赖后，在项目根目录运行以下命令。
+
+```sh
+npm run demo --prefix frontend
+```
+
+打开[本地演示平台](http://127.0.0.1:5182/)。演示进程在同一端口提供页面和 API，独立使用内存 SQLite。正式平台可同时运行。所有页面的顶栏显示“演示模式”，关闭进程即清空本次操作。
+
+- 从首页查看一轮两小时的灌水过程。选择水位、流量或雨量卡上的“查看指标趋势”，切换“历史数据”即可查看对应的小区、原文和导出文件。
+- 在“试验管理”查看观测田 A、进水口与三台仪器的安装记录。流量计有瞬时和累计两项读数，雨量示值的累计或时段含义保留为未知。
+- 点击“练习雨量告警处置”，查看异常样本的原始证据并填写确认说明。点击“补入有效雨量样本”可观察基于新证据的恢复，点击“再次演练异常”可开启下一次练习。场景时钟随补入样本推进，在两次操作间暂停。
+- 示例报文和测量的来源均为 `demo`。CSV、JSON 下载文件名含 `fieldwater-demo`，JSON 清单记录 `data_mode: demo`。硬件联调仍需实际设备和厂家资料。
+
 ## 验证
 
 ```sh
@@ -49,7 +64,7 @@ npm run test:e2e --prefix frontend
 
 浏览器测试默认使用本机 Google Chrome，可用 `CHROME_PATH` 指定可执行文件。测试自行构建前端，创建临时 SQLite，并由操作系统分配独立的本机端口，可与日常开发服务同时运行。Linux CI 安装 Playwright Chromium，以 `CI=true` 运行相同流程。每次推送 main 后 GitHub Actions 自动检查锁文件安装、仓库文件、后端、构建和浏览器流程，实际状态查看 [Actions](https://github.com/zhangsxphd/FieldWater-IoT/actions)。
 
-测试记录见 [TESTING.md](docs/TESTING.md)。测试向量不是仪器实测，不进入业务库；没有模拟器、演示模式或数据填充按钮。
+测试记录见 [TESTING.md](docs/TESTING.md)。正式流程和演示流程使用各自的隔离测试库。浏览器回归覆盖演示标识、三个指标入口、两种标注来源的导出，以及告警确认、恢复和再次演练。
 
 ## 当前边界
 
@@ -63,8 +78,10 @@ npm run test:e2e --prefix frontend
 
 ```text
 backend/src/          数据迁移、接收、档案、状态、查询、告警、试验、审计与测试
+backend/demo/         内存演示场景与隔离测试
 backend/scripts/      数据库备份恢复命令
 frontend/src/         React 页面、公共组件和样式
+frontend/scripts/     独立本地预览与演示入口
 scripts/              仓库文件与凭据模式检查
 tests/               隔离浏览器工作流
 .github/workflows/    main 自动验证

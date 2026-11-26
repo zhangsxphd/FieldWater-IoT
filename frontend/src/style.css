@@ -1233,3 +1233,59 @@ summary {
     width: 100%;
   }
 }
+
+.demo-badge, .demo-kicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 650;
+}
+.demo-badge {
+  white-space: nowrap;
+  color: #784809;
+  background: #fff2cf;
+  border: 1px solid #dec28b;
+  border-radius: 5px;
+  padding: 4px 9px;
+}
+.demo-overview {
+  display: grid;
+  grid-template-columns: minmax(240px, 0.85fr) minmax(260px, 1.15fr);
+  align-items: center;
+  gap: 32px;
+  padding: 24px 28px;
+  margin-bottom: 18px;
+  color: #204630;
+  background: #edf5ef;
+  border: 1px solid #c8dccd;
+  border-radius: 9px;
+}
+.demo-story h2 { margin: 9px 0; font-size: 24px; }
+.demo-story p, .demo-exercise p { margin: 5px 0; font-size: 14px; line-height: 1.65; }
+.demo-story .demo-storage, .demo-exercise small { color: #506757; font-size: 12px; }
+.demo-links { display: flex; flex-wrap: wrap; gap: 10px 22px; margin-top: 17px; font-size: 14px; font-weight: 650; }
+.demo-preview-chart { background: #fff; padding: 13px 16px; border-radius: 6px; min-width: 0; }
+.demo-chart-heading { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; font-size: 13px; }
+.demo-chart-heading span { color: #5c6d62; }
+.demo-preview-chart .chart { padding: 0; margin: 0; }
+.demo-preview-chart .chart svg { display: block; height: auto; width: 100%; }
+.demo-exercise {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px;
+  background: #faf4e5; border: 1px solid #e1cd9e; border-radius: 8px; padding: 16px 20px; margin-bottom: 18px;
+}
+.demo-exercise h2 { margin: 0; color: #644817; font-size: 16px; }
+.demo-entry { margin-top: 16px; color: #355745; font-size: 14px; }
+.demo-entry summary { cursor: pointer; }
+@media (max-width: 850px) {
+  .demo-overview { grid-template-columns: minmax(0, 1fr); gap: 17px; padding: 18px; }
+  .demo-preview-chart { padding: 12px; }
+}
+@media (max-width: 600px) {
+  .top:has(.demo-badge) { gap: 10px; }
+}
+.metric .status { display: table; margin-top: 6px; }
+.demo-preview-chart .chart svg text { font-size: 14px; fill: #526a5b; }
+@media (max-width: 600px) {
+  .demo-preview-chart .chart svg text { font-size: 23px; }
+}

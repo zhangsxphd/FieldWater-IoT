@@ -58,6 +58,7 @@ const root = resolve(__dirname, "..");
     );
     assert.match(await page.locator("main").innerText(), /网关在线率\n—/);
     assert.match(await page.title(), /田水智联/);
+    assert.equal(await page.locator(".demo-badge, .demo-overview").count(), 0);
     assert.equal(await page.locator("vite-error-overlay").count(), 0);
     await shot("overview-empty-desktop");
     for (const route of [

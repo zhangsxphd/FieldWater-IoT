@@ -1,4 +1,5 @@
-import React from "react";
+import React, { useContext } from "react";
+import { DemoOverview } from "../components/DemoWorkspace.jsx";
 import { Link } from "react-router-dom";
 import { Waves, Droplets, CloudRain } from "lucide-react";
 import {
@@ -10,8 +11,11 @@ import {
   Status,
   fmt,
   Refresh,
+  RuntimeMode,
+  query,
 } from "../shared.jsx";
 export default function Overview() {
+  const demo = useContext(RuntimeMode) === "demo";
   const summary = useData("/dashboard/summary"),
     sensors = useData("/devices"),
     gateways = useData("/gateways");
@@ -19,7 +23,7 @@ export default function Overview() {
     <>
       <Title
         title="数据总览"
-        description="通信是否正常、仪器是否有新数据，是两个不同的问题。"
+        description={demo ? "本地演示场景 · 网关通信、仪器读数与试验记录" : "查看网关通信、仪器最近有效读数和待处理异常。"}
       >
         <Refresh
           onClick={() => {
@@ -29,6 +33,7 @@ export default function Overview() {
           }}
         />
       </Title>
+      {demo && <DemoOverview />}
       <State state={summary}>
         {(d) => (
           <>
@@ -82,6 +87,10 @@ export default function Overview() {
                     <span>原文、质量、有效测量</span>
                   </Link>
                 </div>
+                {!demo && <details className="demo-entry">
+                  <summary>尚无仪器？体验本地演示</summary>
+                  <p>在项目根目录运行 <code>npm run demo --prefix frontend</code>，然后<a href="http://127.0.0.1:5182/">打开演示平台 ↗</a>。</p>
+                </details>}
               </Panel>
             )}
             <p className="scope-text">
@@ -101,32 +110,26 @@ export default function Overview() {
               ["rainfall", "雨量监测", CloudRain],
             ].map(([type, title, Icon]) => {
               const found = rows.filter((r) => r.type === type);
+              const device = found.filter(s => s.last_valid_at).sort((a, b) => b.last_valid_at.localeCompare(a.last_valid_at))[0] || found[0];
+              const metrics = device?.metrics.filter(m => m.latest_value != null) || [];
+              const metric = metrics.find(m => m.semantics === "instantaneous") || metrics[0];
+              const total = metrics.find(m => m !== metric && m.semantics === "cumulative");
+              const scope = metric && query({ sensor_id: device.id, measurement_code: metric.measurement_code,
+                unit: metric.unit, time_basis: metric.time_basis === "device_timestamp" ? "measured_at" : "received_at" });
               return (
                 <section className="metric" key={type}>
-                  <span className={"metric-icon " + type}>
-                    <Icon />
-                  </span>
+                  <span className={"metric-icon " + type}><Icon /></span>
                   <div>
                     <h2>{title}</h2>
-                    <div className="no-value">
-                      {found.length
-                        ? `${found.length} 台已登记仪器`
-                        : "尚未登记仪器"}
-                    </div>
-                    <p>
-                      {found.length
-                        ? "每个指标独立查看，保留单位与来源"
-                        : "登记实际仪器后开始管理"}
-                    </p>
-                    <Link
-                      to={
-                        found.length
-                          ? "/monitor?sensor_id=" +
-                            encodeURIComponent(found[0].id)
-                          : "/devices?tab=sensors"
-                      }
-                    >
-                      {found.length ? "选择仪器与指标 →" : "前往登记 →"}
+                    {metric ? <>
+                      <div className="metric-value">{metric.latest_value} <small>{metric.unit}</small></div>
+                      <p>{device.name} · 最近有效{metric.measurement_code}</p>
+                      {total && <p>最近有效{total.measurement_code} {total.latest_value} {total.unit}
+                        {total.data_status !== "fresh" && <Status value={total.data_status} />}</p>}
+                      {metric.data_status !== "fresh" && <Status value={metric.data_status} />}
+                    </> : <div className="no-value">{device ? "暂无有效读数" : "尚未登记仪器"}</div>}
+                    <Link to={scope ? "/monitor?" + scope : device ? "/devices/" + encodeURIComponent(device.id) : "/devices?tab=sensors"}>
+                      {scope ? "查看指标趋势 →" : device ? "查看仪器 →" : "前往登记 →"}
                     </Link>
                   </div>
                 </section>

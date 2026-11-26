@@ -5,9 +5,11 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1 --port 5181 --strictPort",
+    "predemo": "npm run build",
+    "demo": "node scripts/demo.mjs",
     "build": "vite build",
     "pretest:e2e": "npm run build",
-    "test:e2e": "node ../tests/ui-workflow.cjs"
+    "test:e2e": "node ../tests/ui-workflow.cjs && node ../tests/demo-workflow.cjs"
   },
   "dependencies": {
     "@vitejs/plugin-react": "^6.0.2",

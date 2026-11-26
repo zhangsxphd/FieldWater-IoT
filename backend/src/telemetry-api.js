@@ -7,7 +7,7 @@ import { listAlarms } from './alarms.js';
 import { recordAudit } from './audit.js';
 import { fail } from './validation.js';
 
-function exportSnapshot(db, query) {
+function exportSnapshot(db, query, mode) {
   return db.transaction(() => {
     const result = history(db, query, false);
     const summary = query.sensor_id && query.measurement_code && query.unit ? statistics(db, query) : null;
@@ -16,7 +16,7 @@ function exportSnapshot(db, query) {
     filters.order ||= 'desc';
     return {
       manifest: {
-        format: 'fieldwater-telemetry-export-v1', generated_at: new Date().toISOString(),
+        format: 'fieldwater-telemetry-export-v1', data_mode: mode, generated_at: new Date().toISOString(),
         filters, count: result.total, statistics: summary,
         attribution: '按设备采集时间匹配 [安装开始,安装结束)；缺少设备时间不自动分配试验小区',
         rows_sha256: createHash('sha256').update(JSON.stringify(result.rows)).digest('hex'),
@@ -26,17 +26,18 @@ function exportSnapshot(db, query) {
     };
   })();
 }
-export function registerTelemetryRoutes(app, db) {
+export function registerTelemetryRoutes(app, db, { mode = 'live', now = Date.now } = {}) {
+  const filePrefix = mode === 'demo' ? 'fieldwater-demo' : 'fieldwater';
   app.get('/api/devices/:id', async req => {
-    const sensor = sensors(db).find(s => s.id === req.params.id);
+    const sensor = sensors(db, now()).find(s => s.id === req.params.id);
     if (!sensor) fail('仪器不存在', 404);
     return { ...sensor,
-      gateway: gateways(db).find(g => g.id === sensor.gateway_id),
+      gateway: gateways(db, now()).find(g => g.id === sensor.gateway_id),
       profiles: listProfiles(db, sensor.id),
       installations: listInstallations(db, { sensor_id: sensor.id }),
       recent_raw: rawRecords(db, { sensor_id: sensor.id, limit: 10 }),
       recent_events: events(db, { gateway_id: sensor.gateway_id, limit: 10 }),
-      alarms: listAlarms(db, { gateway_id: sensor.gateway_id }).filter(a => !a.sensor_id || a.sensor_id === sensor.id),
+      alarms: listAlarms(db, { gateway_id: sensor.gateway_id }, now()).filter(a => !a.sensor_id || a.sensor_id === sensor.id),
     };
   });
   app.get('/api/devices/:id/profiles', async req => {
@@ -54,16 +55,16 @@ export function registerTelemetryRoutes(app, db) {
   app.get('/api/telemetry/statistics', async req => db.transaction(() => statistics(db, req.query))());
   app.get('/api/telemetry/export.json', async (req, reply) => reply
     .type('application/json; charset=utf-8')
-    .header('Content-Disposition', 'attachment; filename="fieldwater-telemetry.json"')
-    .send(exportSnapshot(db, req.query)));
+    .header('Content-Disposition', 'attachment; filename="' + filePrefix + '-telemetry.json"')
+    .send(exportSnapshot(db, req.query, mode)));
   app.get('/api/telemetry/history.csv', async (req, reply) => {
-    const { rows, manifest } = exportSnapshot(db, req.query);
+    const { rows, manifest } = exportSnapshot(db, req.query, mode);
     const fields = ['sensor_id','sensor_name','gateway_id','measurement_code','value','unit','semantics','measured_at','received_at',
       'communication_quality','protocol_quality','value_quality','time_quality','source','transport','raw_id','profile_id','profile_snapshot',
       'experiment_id','experiment_name','plot_id','plot_name','treatment','installation_id','installation_start_at','installation_end_at',
       'query_time_basis','query_from','query_to','query_generated_at'];
     const cell = value => `"${(typeof value === 'string' ? value.replace(/^[=+@\t\r-]/, "'$&") : String(value ?? '')).replaceAll('"','""')}"`;
-    return reply.type('text/csv; charset=utf-8').header('Content-Disposition','attachment; filename="fieldwater-history.csv"')
+    return reply.type('text/csv; charset=utf-8').header('Content-Disposition','attachment; filename="' + filePrefix + '-history.csv"')
       .send('\uFEFF' + [fields.join(','), ...rows.map(row => {
         const record = { ...row, query_time_basis:manifest.filters.time_basis,query_from:manifest.filters.from,query_to:manifest.filters.to,query_generated_at:manifest.generated_at };
         return fields.map(f => cell(record[f])).join(',');
